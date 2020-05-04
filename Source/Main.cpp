@@ -78,7 +78,6 @@ struct Options
     bool   all;        // -a (hidden)
     bool   dirOnly;    // -d
     bool   comma;      // -m
-    bool   size;       // -s
     bool   list;       // -l
     bool   recursive;  // -R
     size_t maxname;
@@ -139,9 +138,6 @@ int main(int argc, char** argv)
                     break;
                 case 'm':
                     opts.comma = true;
-                    break;
-                case 's':
-                    opts.size = true;
                     break;
                 case 'l':
                     opts.list = true;
