@@ -70,12 +70,15 @@ void          listAll(const string&   cur,
                       const strvec_t& args,
                       Options&        opts);
 
+
+
+
 int main(int argc, char** argv)
 {
     size_t   i;
     char     buf[260];
     strvec_t args;
-    Options opts = {};
+    Options  opts = {};
 
     CONSOLE_SCREEN_BUFFER_INFO info;
 
@@ -119,6 +122,7 @@ int main(int argc, char** argv)
                     opts.list = true;
                     break;
                 case 'R':
+                    opts.byline    = true;
                     opts.recursive = true;
                     break;
                 }
@@ -207,43 +211,46 @@ void listAll(const string&   root_dir,
 
         if (opts.dirOnly && d.flags != 1)
             continue;
-        if (d.data.attrib & _A_SUBDIR)
-            writeColor(CS_DARKGREEN);
-
-        if (d.data.attrib & _A_RDONLY)
-            writeColor(CS_GREY);
-        if (d.data.attrib & _A_NORMAL)
-            writeColor(CS_WHITE);
-        if (d.data.attrib & _A_HIDDEN)
-            writeColor(CS_GREY);
-
-
         if (opts.list)
         {
-            struct stat st;
-            string      newEx;
+            string newEx;
             if (ex.empty())
                 newEx = root_dir + "\\";
             else
-                newEx = ex + root_dir + "\\";
+                newEx = root_dir + "\\";
 
             string full = newEx + d.name;
-            if (stat(full.c_str(), &st) == 0)
-            {
-                tm* tval;
-                tval = ::localtime((time_t*)&st.st_mtime);
+            tm*    tval;
+            tval = ::localtime((time_t*)&d.data.time_write);
 
-                char buf[32];
-                ::strftime(buf, 32, "%D %r", tval);
+            char buf[32];
+            ::strftime(buf, 32, "%D %r", tval);
 
-                cout << right;
-                cout << setw(12) << d.data.size << ' ';
-                cout << left;
-                cout << setw(24) << buf << ' ' << d.name << endl;
-            }
+            writeColor(CS_DARKYELLOW);
+            cout << right;
+            cout << setw(12) << d.data.size << ' ';
+            writeColor(CS_LIGHT_GREY);
+
+            cout << left;
+            cout << buf << ' ';
+            if (d.data.attrib & _A_SUBDIR)
+                writeColor(CS_DARKGREEN);
+            else
+                writeColor(CS_WHITE);
+            cout << d.name << endl;
         }
         else
         {
+            if (d.data.attrib & _A_SUBDIR)
+                writeColor(CS_DARKGREEN);
+
+            if (d.data.attrib & _A_RDONLY)
+                writeColor(CS_GREY);
+            if (d.data.attrib & _A_NORMAL)
+                writeColor(CS_WHITE);
+            if (d.data.attrib & _A_HIDDEN)
+                writeColor(CS_GREY);
+
             cout << setw(maxwidth);
             if (opts.comma)
                 cout << left << ex + d.name + ',';
