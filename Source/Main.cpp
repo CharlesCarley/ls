@@ -3,11 +3,8 @@
 #include <windows.h>
 #include <algorithm>
 #include <cassert>
-#include <chrono>
-#include <cstring>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -159,11 +156,8 @@ void listAll(const string&   root_dir,
                 if (!(find.attrib & _A_SYSTEM) && find.attrib & _A_SUBDIR)
                 {
                     string dname = find.name;
-
                     if (dname != "." && dname != "..")
-                    {
                         dirs.push_back(find.name);
-                    }
                 }
             } while (_findnext(fp, &find) == 0);
         }
@@ -223,24 +217,52 @@ void listAll(const string&   root_dir,
         if (d.data.attrib & _A_HIDDEN)
             writeColor(CS_GREY);
 
-        cout << setw(maxwidth);
-        if (opts.comma)
-            cout << left << ex + d.name + ',';
-        else
-            cout << left << ex + d.name;
-        cout << ' ';
 
-        if (opts.byline)
-            cout << '\n';
+        if (opts.list)
+        {
+            struct stat st;
+            string      newEx;
+            if (ex.empty())
+                newEx = root_dir + "\\";
+            else
+                newEx = ex + root_dir + "\\";
+
+            string full = newEx + d.name;
+            if (stat(full.c_str(), &st) == 0)
+            {
+                tm* tval;
+                tval = ::localtime((time_t*)&st.st_mtime);
+
+                char buf[32];
+                ::strftime(buf, 32, "%D %r", tval);
+
+                cout << right;
+                cout << setw(12) << d.data.size << ' ';
+                cout << left;
+                cout << setw(24) << buf << ' ' << d.name << endl;
+            }
+        }
         else
         {
-            if ((i + 1) * (maxwidth + 2 * Padding) > opts.maxname)
-            {
-                i = 0;
-                cout << '\n';
-            }
+            cout << setw(maxwidth);
+            if (opts.comma)
+                cout << left << ex + d.name + ',';
             else
-                ++i;
+                cout << left << ex + d.name;
+            cout << ' ';
+
+            if (opts.byline)
+                cout << '\n';
+            else
+            {
+                if ((i + 1) * (maxwidth + 2 * Padding) > opts.maxname)
+                {
+                    i = 0;
+                    cout << '\n';
+                }
+                else
+                    ++i;
+            }
         }
         writeColor(CS_WHITE);
     }
