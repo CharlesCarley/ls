@@ -1,6 +1,6 @@
 # List Directory
 
-Is a simple ls utility for Windows.
+Is a simple list directory utility for Windows.
 
 ## Usage
 
