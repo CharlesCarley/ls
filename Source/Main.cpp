@@ -94,16 +94,15 @@ void          listAll(const string&   cur,
                       const strvec_t& args,
                       const Options&  opts);
 
+
 int main(int argc, char** argv)
 {
-    size_t   i;
-    char     buf[260];
-    strvec_t args;
-    Options  opts = {};
-
+    size_t                     i;
+    strvec_t                   args;
+    Options                    opts = {};
     CONSOLE_SCREEN_BUFFER_INFO info;
-    _getcwd(buf, 260);
-    string root_dir = buf;
+    string                     root_dir;
+
     GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
     opts.winRight = info.srWindow.Right;
 
@@ -145,14 +144,21 @@ int main(int argc, char** argv)
                 ++i;
             }
             else
+            {
                 args.push_back(argv[i++]);
-        }
+                string& str = args.back();
 
+                if (str.find('*') == -1)
+                    str += '/';
+                if (str.back() == '/' || str.back() == '\\')
+                    str += "*";
+            }
+        }
         if (args.empty())
             args.push_back("*.*");
     }
 
-    listAll(root_dir, "", args, opts);
+    listAll("", "", args, opts);
     return 0;
 }
 
@@ -187,10 +193,17 @@ void listAll(const string&   curDir,
         _findclose(fp);
     }
 
+
     pathvec_t vec;
     for (string arg : args)
     {
-        intptr_t fp = _findfirst((curDir + "\\" + arg).c_str(), &find);
+        string subRoot;
+        if (basePath.empty())
+            subRoot = arg;
+        else
+            subRoot = curDir + "\\" + arg;
+
+        intptr_t fp = _findfirst(subRoot.c_str(), &find);
         if (fp != -1)
         {
             do
@@ -216,6 +229,7 @@ void listAll(const string&   curDir,
         }
         _findclose(fp);
     }
+
     stable_sort(vec.begin(), vec.end());
 
     i = 0;
@@ -224,7 +238,7 @@ void listAll(const string&   curDir,
         if (!opts.all && d.data.attrib & _A_HIDDEN)
             continue;
 
-        if (opts.dirOnly && (d.data.attrib & _A_SUBDIR) != 0)
+        if (opts.dirOnly && !(d.data.attrib & _A_SUBDIR))
             continue;
 
         if (opts.list)
@@ -277,7 +291,7 @@ void listAll(const string&   curDir,
                 cout << '\n';
             else
             {
-                if ((i + 1) * (maxwidth + 2 * Padding) > opts.winRight)
+                if ((i + 1) * (maxwidth + Padding) > opts.winRight)
                 {
                     i = 0;
                     cout << '\n';
@@ -286,6 +300,7 @@ void listAll(const string&   curDir,
                     ++i;
             }
         }
+
         writeColor(CS_WHITE);
     }
 
