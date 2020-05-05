@@ -84,6 +84,7 @@ struct Options
     bool   comma;      // -m
     bool   list;       // -l
     bool   recursive;  // -R
+    bool   shortpath;  // -S
     size_t winRight;
 };
 
@@ -113,6 +114,11 @@ void          splitPath(const string& input,
                          string&       path,
                          string&       pattern);
 string        normalizePath(const string& input);
+void          makeName(string&        dest,
+                       const string&  subDir,
+                       const string&  name,
+                       const Options& opts);
+
 
 
 int main(int argc, char** argv)
@@ -157,6 +163,9 @@ int main(int argc, char** argv)
                     break;
                 case 'l':
                     opts.list = true;
+                    break;
+                case 'S':
+                    opts.shortpath = true;
                     break;
                 case 'R':
                     opts.byline    = true;
@@ -340,22 +349,9 @@ void listAll(const string&   callDir,
 
             cout << setw(maxwidth);
 
-            if (opts.byline)
-            {
-                if (opts.comma)
-                    cout << left << subDir + d.name + ',';
-                else
-                    cout << left << subDir + d.name;
-                cout << ' ';
-            }
-            else
-            {
-                if (opts.comma)
-                    cout << left << d.name + ',';
-                else
-                    cout << left << d.name;
-                cout << ' ';
-            }
+            string name;
+            makeName(name, subDir, d.name, opts);
+            cout << left << name + ' ';
 
             if (opts.byline)
                 cout << '\n';
@@ -380,6 +376,32 @@ void resetState()
     writeColor(CS_WHITE);
 }
 
+void makeName(string& dest, const string& subDir, const string& name, const Options& opts)
+{
+
+    if (opts.byline)
+    {
+        dest = subDir + name;
+        if (opts.shortpath)
+        {
+            size_t len = dest.size();
+            char* tmp = new char[len];
+            len = ::GetShortPathName(dest.c_str(), tmp, (DWORD)len);
+            if (len != 0)
+                dest = tmp;
+            delete[] tmp;
+
+        }
+        if (opts.comma)
+            dest.push_back(',');
+    }
+    else
+    {
+        dest = name;
+        if (opts.comma)
+            dest.push_back(',');
+    }
+}
 
 void splitPath(const string& input,
                 string&       path,
