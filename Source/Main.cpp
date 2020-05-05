@@ -67,6 +67,11 @@ struct finddata_t
         int b = (rhs.data.attrib & _A_SUBDIR);
         return a > b;
     }
+
+    static bool sort_size(const finddata_t& lhs, const finddata_t& rhs)
+    {
+        return lhs.data.size < rhs.data.size;
+    }
 };
 
 // Replicating some similar options.
@@ -84,9 +89,16 @@ struct Options
 
 typedef vector<finddata_t> pathvec_t;
 typedef vector<string>     strvec_t;
-const size_t               Padding = 6;
-const size_t               MaxName = 40;
 
+const size_t Padding         = 6;
+const size_t MaxName         = 40;
+const size_t SizeWidth       = 18;
+const char   SeperatorWin    = '\\';
+const char   SeperatorNx     = '/';
+const char   DefaultWildcard = '*';
+
+
+void          resetState();
 void          writeColor(int fore, int back = CS_BLACK);
 unsigned char getColor(int fore, int back);
 void          listAll(const string&   cur,
@@ -103,11 +115,13 @@ int main(int argc, char** argv)
     CONSOLE_SCREEN_BUFFER_INFO info;
     string                     root_dir;
 
+    atexit(resetState);
+
     GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
     opts.winRight = info.srWindow.Right;
 
     if (argc <= 1)
-        args.push_back("*.*");
+        args.push_back(string(1, DefaultWildcard));
     else
     {
         i = 1;
@@ -148,19 +162,20 @@ int main(int argc, char** argv)
                 args.push_back(argv[i++]);
                 string& str = args.back();
 
-                if (str.find('*') == -1)
-                    str += '/';
-                if (str.back() == '/' || str.back() == '\\')
-                    str += "*";
+                if (str.find(DefaultWildcard) == -1)
+                    str += SeperatorWin;
+                if (str.back() == SeperatorWin || str.back() == SeperatorNx)
+                    str += DefaultWildcard;
             }
         }
         if (args.empty())
-            args.push_back("*.*");
+            args.push_back(string(1, DefaultWildcard));
     }
 
     listAll("", "", args, opts);
     return 0;
 }
+
 
 void listAll(const string&   curDir,
              const string&   basePath,
@@ -174,7 +189,7 @@ void listAll(const string&   curDir,
 
     if (opts.recursive)
     {
-        intptr_t fp = _findfirst((curDir + "\\*.*").c_str(), &find);
+        intptr_t fp = _findfirst((curDir + SeperatorWin + DefaultWildcard).c_str(), &find);
         if (fp != -1)
         {
             do
@@ -193,17 +208,16 @@ void listAll(const string&   curDir,
         _findclose(fp);
     }
 
-
     pathvec_t vec;
     for (string arg : args)
     {
-        string subRoot;
+        string subpath;
         if (basePath.empty())
-            subRoot = arg;
+            subpath = arg;
         else
-            subRoot = curDir + "\\" + arg;
+            subpath = curDir + SeperatorWin + arg;
 
-        intptr_t fp = _findfirst(subRoot.c_str(), &find);
+        intptr_t fp = _findfirst(subpath.c_str(), &find);
         if (fp != -1)
         {
             do
@@ -212,8 +226,8 @@ void listAll(const string&   curDir,
                 if (!(find.attrib & _A_SYSTEM))
                 {
                     maxwidth = std::max<size_t>(d.name.size(), maxwidth);
-                    if (maxwidth > 40)
-                        maxwidth = 40;
+                    if (maxwidth > MaxName)
+                        maxwidth = MaxName;
 
                     if (d.name != "." && d.name != "..")
                     {
@@ -230,55 +244,76 @@ void listAll(const string&   curDir,
         _findclose(fp);
     }
 
-    stable_sort(vec.begin(), vec.end());
+    if (opts.list)
+        sort(vec.begin(), vec.end(), finddata_t::sort_size);
+    else
+        stable_sort(vec.begin(), vec.end());
 
     i = 0;
     for (finddata_t d : vec)
     {
-        if (!opts.all && d.data.attrib & _A_HIDDEN)
+        bool isHidden = (d.data.attrib & _A_HIDDEN) != 0;
+        if (!opts.all && isHidden)
             continue;
 
-        if (opts.dirOnly && !(d.data.attrib & _A_SUBDIR))
+        bool isDirectory = (d.data.attrib & _A_SUBDIR) != 0;
+        if (opts.dirOnly && !isDirectory)
             continue;
 
         if (opts.list)
         {
-            string subRoot;
-            if (basePath.empty())
-                subRoot = curDir + "\\";
-            else
-                subRoot = curDir + "\\";
+            tm tval;
+            char buf[32] = {};
+            if (::localtime_s(&tval, (time_t*)&d.data.time_write)==0)
+                ::strftime(buf, 32, "%D %r", &tval);
 
-            string full = subRoot + d.name;
-
-            tm* tval;
-            tval = ::localtime((time_t*)&d.data.time_write);
-
-            char buf[32];
-            ::strftime(buf, 32, "%D %r", tval);
-
-            writeColor(CS_DARKYELLOW);
             cout << right;
-            cout << setw(12) << d.data.size << ' ';
-            writeColor(CS_LIGHT_GREY);
+            cout << setw(SizeWidth);
+            
+            if (isDirectory)
+            {
+                // fill the SizeWidth it with space.
+                cout << ' ';
+                cout << ' ';
+                if (isHidden)
+                    writeColor(CS_GREY);
+                else
+                    writeColor(CS_DARKGREEN);
+            }
+            else
+            {
+                writeColor(CS_DARKYELLOW);
+                cout << d.data.size;
+                cout << ' ';
+                writeColor(CS_WHITE);
+            }
 
             cout << left;
             cout << buf << ' ';
-            if (d.data.attrib & _A_SUBDIR)
-                writeColor(CS_DARKGREEN);
-
             cout << d.name << '\n';
         }
         else
         {
-            if (d.data.attrib & _A_SUBDIR)
+            if (isDirectory && isHidden)
+                writeColor(CS_GREY);
+            else if (isDirectory)
                 writeColor(CS_DARKGREEN);
-            if (d.data.attrib & _A_RDONLY)
+            else if (isHidden)
                 writeColor(CS_GREY);
-            if (d.data.attrib & _A_NORMAL)
+            else
                 writeColor(CS_WHITE);
-            if (d.data.attrib & _A_HIDDEN)
-                writeColor(CS_GREY);
+
+            if (!opts.byline)
+            {
+                // Find when this will write 
+                // past the bounds of the window.
+                if (i * (maxwidth + 2 * Padding) >= opts.winRight)
+                {
+                    i = 0;
+                    cout << '\n';
+                }
+            }
+
 
             cout << setw(maxwidth);
             if (opts.comma)
@@ -290,17 +325,10 @@ void listAll(const string&   curDir,
             if (opts.byline)
                 cout << '\n';
             else
-            {
-                if ((i + 1) * (maxwidth + Padding) > opts.winRight)
-                {
-                    i = 0;
-                    cout << '\n';
-                }
-                else
-                    ++i;
-            }
+                ++i;
         }
 
+        // always set it back to the default color.
         writeColor(CS_WHITE);
     }
 
@@ -310,14 +338,21 @@ void listAll(const string&   curDir,
         {
             string subRoot;
             if (basePath.empty())
-                subRoot = dir + "\\";
+                subRoot = dir + SeperatorWin;
             else
-                subRoot = basePath + dir + "\\";
+                subRoot = basePath + dir + SeperatorWin;
 
-            listAll(curDir + "\\" + dir, subRoot, args, opts);
+            listAll(curDir + SeperatorWin + dir, subRoot, args, opts);
         }
     }
 }
+
+
+void resetState()
+{
+    writeColor(CS_WHITE);
+}
+
 
 void writeColor(int fg, int bg)
 {
