@@ -119,6 +119,8 @@ void          makeName(string&        dest,
                        const string&  name,
                        const Options& opts);
 
+void writeListHeader();
+void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
 
 
 int main(int argc, char** argv)
@@ -213,7 +215,7 @@ void listAll(const string&   callDir,
              const Options&  opts)
 {
     _finddata_t find     = {};
-    size_t      i        = 1;
+    size_t      i        = 1, totalSize, nrfiles, nrdirs;
     size_t      maxwidth = 0;
     strvec_t    dirs;
 
@@ -273,8 +275,13 @@ void listAll(const string&   callDir,
         }
     }
 
+
+    nrfiles = nrdirs = totalSize = 0;
     if (opts.list)
+    {
         sort(vec.begin(), vec.end(), finddata_t::sort_size);
+        writeListHeader();
+    }
     else
         stable_sort(vec.begin(), vec.end());
 
@@ -304,12 +311,15 @@ void listAll(const string&   callDir,
                 // fill the SizeWidth with space.
                 cout << ' ';
                 cout << ' ';
+                nrdirs++;
             }
             else
             {
                 writeColor(CS_YELLOW);
                 cout << d.data.size;
                 cout << ' ';
+                nrfiles++;
+                totalSize += d.data.size;
             }
 
             cout << left;
@@ -362,6 +372,9 @@ void listAll(const string&   callDir,
         // always set it back to the default color.
         writeColor(CS_WHITE);
     }
+
+    if (opts.list)
+        writeListFooter(totalSize, nrfiles, nrdirs);
 
     if (opts.recursive)
     {
@@ -455,6 +468,37 @@ string combinePath(const string& path,
     return rval;
 }
 
+void writeListHeader()
+{
+    writeColor(CS_LIGHT_GREY);
+    string title = "Size in Bytes";
+    size_t space = (SizeWidth - title.size())/2;
+    cout << '\n'<< setw(space) << ' ' << title << setw(8) << ' ';
+    cout << "Last Modified" << setw(10) << ' ';
+    cout << "File Name\n\n";
+}
+
+void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
+{
+    writeColor(CS_YELLOW);
+    cout << '\n';
+    cout << right << setw(SizeWidth) << sizeInBytes;
+    writeColor(CS_DARKYELLOW);
+
+    cout << " bytes";
+    writeColor(CS_WHITE);
+
+    cout << right << setw(16) << ' ' << files << " file(s)";
+    if (dirs != 0)
+    {
+        cout << " and ";
+        if (dirs > 1)
+            cout << dirs << " directories";
+        else
+            cout << dirs << " directory";
+    }
+    cout << '\n';
+}
 
 
 
