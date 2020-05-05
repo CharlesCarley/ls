@@ -59,6 +59,7 @@ enum Colors
 struct finddata_t
 {
     string      name;
+    string      dispname;
     _finddata_t data;
 
     bool operator<(const finddata_t& rhs) const
@@ -81,6 +82,7 @@ struct Options
     bool   byline;     // -x, -c = by column (default)
     bool   all;        // -a (hidden)
     bool   dirOnly;    // -d
+    bool   fileOnly;   // -f only files
     bool   comma;      // -m
     bool   list;       // -l
     bool   recursive;  // -R
@@ -91,14 +93,15 @@ struct Options
 typedef vector<finddata_t> pathvec_t;
 typedef vector<string>     strvec_t;
 
-const size_t Padding         = 6;
-const size_t MaxName         = 40;
+const size_t Padding         = 5;
+const size_t MaxName         = 28;
 const size_t SizeWidth       = 18;
 const char   SeperatorWin    = '\\';
 const char   SeperatorNx     = '/';
 const string DefaultWildcard = "*";
 const string Empty           = "";
 
+void          help();
 void          writeColor(int fore, int back = CS_BLACK);
 unsigned char getColor(int fore, int back);
 
@@ -122,6 +125,8 @@ void writeListHeader(const string& directory);
 void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
 
 BOOL WINAPI CtrlCallback(DWORD evt);
+
+
 
 int main(int argc, char** argv)
 {
@@ -160,11 +165,17 @@ int main(int argc, char** argv)
                 case 'd':
                     opts.dirOnly = true;
                     break;
+                case 'f':
+                    opts.fileOnly = true;
+                    break;
                 case 'm':
                     opts.comma = true;
                     break;
                 case 'l':
                     opts.list = true;
+                    break;
+                case 'h':
+                    help();
                     break;
                 case 'S':
                     opts.shortpath = true;
@@ -251,7 +262,7 @@ void listAll(const string&   callDir,
         {
             do
             {
-                finddata_t d = {find.name, find};
+                finddata_t d = {find.name, find.name, find};
                 if (!(find.attrib & _A_SYSTEM))
                 {
                     maxwidth = std::max<size_t>(d.name.size(), maxwidth);
@@ -262,8 +273,8 @@ void listAll(const string&   callDir,
                     {
                         if (d.name.size() > MaxName)
                         {
-                            d.name = d.name.substr(0, MaxName - 3);
-                            d.name += "...";
+                            d.dispname = d.dispname.substr(0, MaxName - 3);
+                            d.dispname  += "...";
                         }
                         vec.push_back(d);
                     }
@@ -295,6 +306,8 @@ void listAll(const string&   callDir,
 
         bool isDirectory = (d.data.attrib & _A_SUBDIR) != 0;
         if (opts.dirOnly && !isDirectory)
+            continue;
+        if (opts.fileOnly && isDirectory)
             continue;
 
         if (opts.list)
@@ -361,7 +374,7 @@ void listAll(const string&   callDir,
             cout << setw(maxwidth + Padding);
 
             string name;
-            makeName(name, subDir, d.name, opts);
+            makeName(name, subDir, opts.byline ? d.name : d.dispname, opts);
             cout << left << name + ' ';
 
             if (opts.byline)
@@ -385,6 +398,24 @@ void listAll(const string&   callDir,
         for (string dir : dirs)
             listAll(callDir, combinePath(subDir, dir, Empty), args, opts);
     }
+}
+
+
+void help()
+{
+    cout << "ls <options> wild-card\n\n";
+    cout << "options:\n";
+    cout << "    -x list directory entries line by line.\n";
+    cout << "    -c list directory entries in columns (default).\n";
+    cout << "    -a list hidden files.\n";
+    cout << "    -d only list directories.\n";
+    cout << "    -f only list files.\n";
+    cout << "    -m add a comma after each entry.\n";
+    cout << "    -R list recursively.\n";
+    cout << "    -l list the file size, last write time and the file name.\n";
+    cout << "    -S build a short path name. Used with -x option.\n";
+    cout << "    -h show this help message.\n";
+    exit(0);
 }
 
 BOOL WINAPI CtrlCallback(DWORD evt)

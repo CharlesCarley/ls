@@ -12,9 +12,12 @@ options:
     -c list directory entries in columns (default).
     -a list hidden files.
     -d only list directories.
+    -f only list files.
     -m add a comma after each entry.
     -R list recursively.
     -l list the file size, last write time and the file name.
+    -S build a short path name. Used with -x option.
+    -h show this help message.
 ```
 
 ## Building
