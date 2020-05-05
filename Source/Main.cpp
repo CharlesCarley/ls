@@ -382,7 +382,7 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
     if (opts.byline)
     {
         dest = subDir + name;
-        if (opts.shortpath)
+        if (opts.shortpath && dest.find(' ') != string::npos)
         {
             size_t len = dest.size();
             char* tmp = new char[len];
