@@ -95,7 +95,8 @@ const size_t MaxName         = 40;
 const size_t SizeWidth       = 18;
 const char   SeperatorWin    = '\\';
 const char   SeperatorNx     = '/';
-const char   DefaultWildcard = '*';
+const string DefaultWildcard = "*";
+const string Empty           = "";
 
 
 void          resetState();
@@ -105,12 +106,19 @@ void          listAll(const string&   cur,
                       const string&   ex,
                       const strvec_t& args,
                       const Options&  opts);
+string        combinePath(const string& path,
+                          const string& subpath,
+                          const string& search);
+void          splitPath(const string& input,
+                         string&       path,
+                         string&       pattern);
+string        normalizePath(const string& input);
 
 
 int main(int argc, char** argv)
 {
     size_t                     i;
-    strvec_t                   args;
+    strvec_t                   args, externals;
     Options                    opts = {};
     CONSOLE_SCREEN_BUFFER_INFO info;
     string                     root_dir;
@@ -121,7 +129,7 @@ int main(int argc, char** argv)
     opts.winRight = info.srWindow.Right;
 
     if (argc <= 1)
-        args.push_back(string(1, DefaultWildcard));
+        args.push_back(DefaultWildcard);
     else
     {
         i = 1;
@@ -159,26 +167,39 @@ int main(int argc, char** argv)
             }
             else
             {
-                args.push_back(argv[i++]);
-                string& str = args.back();
+                string str = normalizePath(argv[i++]);
+                string path, arg;
+                splitPath(str, path, arg);
 
-                if (str.find(DefaultWildcard) == -1)
-                    str += SeperatorWin;
-                if (str.back() == SeperatorWin || str.back() == SeperatorNx)
-                    str += DefaultWildcard;
+                externals.push_back(path);
+
+                if (arg.find(DefaultWildcard) == string::npos)
+                    arg += SeperatorWin;
+                if (arg.back() == SeperatorWin || str.back() == SeperatorNx)
+                    arg += DefaultWildcard;
+
+                args.push_back(arg);
             }
         }
         if (args.empty())
-            args.push_back(string(1, DefaultWildcard));
+            args.push_back(DefaultWildcard);
     }
 
-    listAll("", "", args, opts);
+    if (!externals.empty())
+    {
+        for (string external : externals)
+            listAll(Empty, external, args, opts);
+    }
+    else if (!args.empty())
+        listAll(Empty, Empty, args, opts);
+    else  // should never happen
+        cout << "failed to collect any arguments!\n";
     return 0;
 }
 
 
-void listAll(const string&   curDir,
-             const string&   basePath,
+void listAll(const string&   callDir,
+             const string&   subDir,
              const strvec_t& args,
              const Options&  opts)
 {
@@ -189,7 +210,9 @@ void listAll(const string&   curDir,
 
     if (opts.recursive)
     {
-        intptr_t fp = _findfirst((curDir + SeperatorWin + DefaultWildcard).c_str(), &find);
+        string path = combinePath(callDir, subDir, DefaultWildcard);
+
+        intptr_t fp = _findfirst(path.c_str(), &find);
         if (fp != -1)
         {
             do
@@ -211,11 +234,7 @@ void listAll(const string&   curDir,
     pathvec_t vec;
     for (string arg : args)
     {
-        string subpath;
-        if (basePath.empty())
-            subpath = arg;
-        else
-            subpath = curDir + SeperatorWin + arg;
+        string subpath = combinePath(callDir, subDir, arg);
 
         intptr_t fp = _findfirst(subpath.c_str(), &find);
         if (fp != -1)
@@ -240,8 +259,9 @@ void listAll(const string&   curDir,
                     }
                 }
             } while (_findnext(fp, &find) == 0);
+
+            _findclose(fp);
         }
-        _findclose(fp);
     }
 
     if (opts.list)
@@ -272,7 +292,7 @@ void listAll(const string&   curDir,
             
             if (isDirectory)
             {
-                // fill the SizeWidth it with space.
+                // fill the SizeWidth with space.
                 cout << ' ';
                 cout << ' ';
                 if (isHidden)
@@ -290,7 +310,7 @@ void listAll(const string&   curDir,
 
             cout << left;
             cout << buf << ' ';
-            cout << d.name << '\n';
+            cout << subDir + d.name << '\n';
         }
         else
         {
@@ -317,9 +337,9 @@ void listAll(const string&   curDir,
 
             cout << setw(maxwidth);
             if (opts.comma)
-                cout << left << basePath + d.name + ',';
+                cout << left << subDir + d.name + ',';
             else
-                cout << left << basePath + d.name;
+                cout << left << subDir + d.name;
             cout << ' ';
 
             if (opts.byline)
@@ -335,15 +355,7 @@ void listAll(const string&   curDir,
     if (opts.recursive)
     {
         for (string dir : dirs)
-        {
-            string subRoot;
-            if (basePath.empty())
-                subRoot = dir + SeperatorWin;
-            else
-                subRoot = basePath + dir + SeperatorWin;
-
-            listAll(curDir + SeperatorWin + dir, subRoot, args, opts);
-        }
+            listAll(callDir, combinePath(subDir, dir, Empty), args, opts);
     }
 }
 
@@ -352,6 +364,61 @@ void resetState()
 {
     writeColor(CS_WHITE);
 }
+
+
+void splitPath(const string& input,
+                string&       path,
+                string&       pattern)
+{
+    size_t pos = input.find_last_of(SeperatorWin);
+    if (pos != string::npos)
+    {
+        path = input.substr(0, pos+1);
+        pattern = input.substr(pos+1, input.size());
+    }
+    else
+    {
+        path = Empty;
+        pattern = input;
+    }
+}
+
+string normalizePath(const string& input)
+{
+    string rval = input;
+    size_t pos;
+    while ((pos = rval.find(SeperatorNx)) != string::npos)
+        rval = rval.replace(pos, 1, &SeperatorWin);
+    return rval;
+
+}
+
+
+string combinePath(const string& path,
+                   const string& subpath,
+                   const string& search)
+{
+    string rval = path;
+    if (!rval.empty())
+    {
+        if (rval.back() != SeperatorWin)
+            rval += SeperatorWin;
+    }
+    if (!subpath.empty())
+        rval += subpath;
+
+    if (!rval.empty())
+    {
+        if (rval.back() != SeperatorWin)
+            rval += SeperatorWin;
+    }
+    if (!search.empty())
+        rval += search;
+
+    return rval;
+}
+
+
 
 
 void writeColor(int fg, int bg)
