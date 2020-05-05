@@ -99,29 +99,29 @@ const char   SeperatorNx     = '/';
 const string DefaultWildcard = "*";
 const string Empty           = "";
 
-
-void          resetState();
 void          writeColor(int fore, int back = CS_BLACK);
 unsigned char getColor(int fore, int back);
-void          listAll(const string&   cur,
-                      const string&   ex,
-                      const strvec_t& args,
-                      const Options&  opts);
-string        combinePath(const string& path,
-                          const string& subpath,
-                          const string& search);
-void          splitPath(const string& input,
-                         string&       path,
-                         string&       pattern);
-string        normalizePath(const string& input);
-void          makeName(string&        dest,
-                       const string&  subDir,
-                       const string&  name,
-                       const Options& opts);
 
-void writeListHeader();
+void   listAll(const string&   cur,
+               const string&   ex,
+               const strvec_t& args,
+               const Options&  opts);
+string combinePath(const string& path,
+                   const string& subpath,
+                   const string& search);
+void   splitPath(const string& input,
+                 string&       path,
+                 string&       pattern);
+string normalizePath(const string& input);
+void   makeName(string&        dest,
+                const string&  subDir,
+                const string&  name,
+                const Options& opts);
+
+void writeListHeader(const string& directory);
 void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
 
+BOOL WINAPI CtrlCallback(DWORD evt);
 
 int main(int argc, char** argv)
 {
@@ -131,9 +131,9 @@ int main(int argc, char** argv)
     CONSOLE_SCREEN_BUFFER_INFO info;
     string                     root_dir;
 
-    atexit(resetState);
-
+    SetConsoleCtrlHandler(CtrlCallback, TRUE);
     GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
+
     opts.winRight = info.srWindow.Right;
 
     if (argc <= 1)
@@ -208,7 +208,6 @@ int main(int argc, char** argv)
     return 0;
 }
 
-
 void listAll(const string&   callDir,
              const string&   subDir,
              const strvec_t& args,
@@ -275,15 +274,17 @@ void listAll(const string&   callDir,
         }
     }
 
-
     nrfiles = nrdirs = totalSize = 0;
-    if (opts.list)
+    if (!vec.empty())
     {
-        sort(vec.begin(), vec.end(), finddata_t::sort_size);
-        writeListHeader();
+        if (opts.list)
+        {
+            sort(vec.begin(), vec.end(), finddata_t::sort_size);
+            writeListHeader(subDir);
+        }
+        else
+            stable_sort(vec.begin(), vec.end());
     }
-    else
-        stable_sort(vec.begin(), vec.end());
 
     i = 0;
     for (finddata_t d : vec)
@@ -298,14 +299,14 @@ void listAll(const string&   callDir,
 
         if (opts.list)
         {
-            tm tval;
+            tm   tval;
             char buf[32] = {};
-            if (::localtime_s(&tval, (time_t*)&d.data.time_write)==0)
+            if (::localtime_s(&tval, (time_t*)&d.data.time_write) == 0)
                 ::strftime(buf, 32, "%D %r", &tval);
 
             cout << right;
             cout << setw(SizeWidth);
-            
+
             if (isDirectory)
             {
                 // fill the SizeWidth with space.
@@ -330,9 +331,10 @@ void listAll(const string&   callDir,
                 writeColor(CS_GREY);
             else if (isDirectory)
                 writeColor(CS_GREEN);
-            else writeColor(CS_WHITE);
+            else
+                writeColor(CS_WHITE);
 
-            cout << subDir + d.name << '\n';
+            cout << d.name << '\n';
         }
         else
         {
@@ -347,7 +349,7 @@ void listAll(const string&   callDir,
 
             if (!opts.byline)
             {
-                // Find when this will write 
+                // Find when this will write
                 // past the bounds of the window.
                 if (i * (maxwidth + 2 * Padding) >= opts.winRight)
                 {
@@ -356,8 +358,7 @@ void listAll(const string&   callDir,
                 }
             }
 
-
-            cout << setw(maxwidth);
+            cout << setw(maxwidth + Padding);
 
             string name;
             makeName(name, subDir, d.name, opts);
@@ -373,8 +374,11 @@ void listAll(const string&   callDir,
         writeColor(CS_WHITE);
     }
 
-    if (opts.list)
-        writeListFooter(totalSize, nrfiles, nrdirs);
+    if (!vec.empty())
+    {
+        if (opts.list)
+            writeListFooter(totalSize, nrfiles, nrdirs);
+    }
 
     if (opts.recursive)
     {
@@ -383,27 +387,33 @@ void listAll(const string&   callDir,
     }
 }
 
-
-void resetState()
+BOOL WINAPI CtrlCallback(DWORD evt)
 {
-    writeColor(CS_WHITE);
+    if (evt == CTRL_C_EVENT || evt == CTRL_BREAK_EVENT)
+    {
+        // To prevent lingering colors.
+        writeColor(CS_WHITE);
+        ExitProcess(0);
+        return 1;
+    }
+    return 0;
 }
 
 void makeName(string& dest, const string& subDir, const string& name, const Options& opts)
 {
-
     if (opts.byline)
     {
         dest = subDir + name;
         if (opts.shortpath && dest.find(' ') != string::npos)
         {
             size_t len = dest.size();
-            char* tmp = new char[len];
+            char*  tmp = new char[len];
+
             len = ::GetShortPathName(dest.c_str(), tmp, (DWORD)len);
             if (len != 0)
                 dest = tmp;
-            delete[] tmp;
 
+            delete[] tmp;
         }
         if (opts.comma)
             dest.push_back(',');
@@ -417,18 +427,18 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
 }
 
 void splitPath(const string& input,
-                string&       path,
-                string&       pattern)
+               string&       path,
+               string&       pattern)
 {
     size_t pos = input.find_last_of(SeperatorWin);
     if (pos != string::npos)
     {
-        path = input.substr(0, pos+1);
-        pattern = input.substr(pos+1, input.size());
+        path    = input.substr(0, pos + 1);
+        pattern = input.substr(pos + 1, input.size());
     }
     else
     {
-        path = Empty;
+        path    = Empty;
         pattern = input;
     }
 }
@@ -440,9 +450,7 @@ string normalizePath(const string& input)
     while ((pos = rval.find(SeperatorNx)) != string::npos)
         rval = rval.replace(pos, 1, &SeperatorWin);
     return rval;
-
 }
-
 
 string combinePath(const string& path,
                    const string& subpath,
@@ -468,12 +476,19 @@ string combinePath(const string& path,
     return rval;
 }
 
-void writeListHeader()
+void writeListHeader(const string& directory)
 {
+    if (!directory.empty())
+    {
+        writeColor(CS_GREEN);
+        cout << '\n';
+        cout << directory << '\n';
+    }
     writeColor(CS_LIGHT_GREY);
     string title = "Size in Bytes";
-    size_t space = (SizeWidth - title.size())/2;
-    cout << '\n'<< setw(space) << ' ' << title << setw(8) << ' ';
+    size_t space = (SizeWidth - title.size()) / 2;
+    cout << '\n'
+         << setw(space) << ' ' << title << setw(8) << ' ';
     cout << "Last Modified" << setw(10) << ' ';
     cout << "File Name\n\n";
 }
@@ -499,8 +514,6 @@ void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
     }
     cout << '\n';
 }
-
-
 
 void writeColor(int fg, int bg)
 {
