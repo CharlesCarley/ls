@@ -295,21 +295,24 @@ void listAll(const string&   callDir,
                 // fill the SizeWidth with space.
                 cout << ' ';
                 cout << ' ';
-                if (isHidden)
-                    writeColor(CS_GREY);
-                else
-                    writeColor(CS_DARKGREEN);
             }
             else
             {
-                writeColor(CS_DARKYELLOW);
+                writeColor(CS_YELLOW);
                 cout << d.data.size;
                 cout << ' ';
-                writeColor(CS_WHITE);
             }
 
             cout << left;
+            writeColor(CS_LIGHT_GREY);
             cout << buf << ' ';
+
+            if (isHidden)
+                writeColor(CS_GREY);
+            else if (isDirectory)
+                writeColor(CS_GREEN);
+            else writeColor(CS_WHITE);
+
             cout << subDir + d.name << '\n';
         }
         else
@@ -317,7 +320,7 @@ void listAll(const string&   callDir,
             if (isDirectory && isHidden)
                 writeColor(CS_GREY);
             else if (isDirectory)
-                writeColor(CS_DARKGREEN);
+                writeColor(CS_GREEN);
             else if (isHidden)
                 writeColor(CS_GREY);
             else
@@ -336,11 +339,23 @@ void listAll(const string&   callDir,
 
 
             cout << setw(maxwidth);
-            if (opts.comma)
-                cout << left << subDir + d.name + ',';
+
+            if (opts.byline)
+            {
+                if (opts.comma)
+                    cout << left << subDir + d.name + ',';
+                else
+                    cout << left << subDir + d.name;
+                cout << ' ';
+            }
             else
-                cout << left << subDir + d.name;
-            cout << ' ';
+            {
+                if (opts.comma)
+                    cout << left << d.name + ',';
+                else
+                    cout << left << d.name;
+                cout << ' ';
+            }
 
             if (opts.byline)
                 cout << '\n';
