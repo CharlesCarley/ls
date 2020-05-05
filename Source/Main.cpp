@@ -56,22 +56,21 @@ enum Colors
     CS_COLOR_MAX
 };
 
-struct find_data_t
+struct finddata_t
 {
     string      name;
-    string      dir;
     _finddata_t data;
-    int         flags;
 
-    bool operator<(const find_data_t& a) const
+    bool operator<(const finddata_t& rhs) const
     {
-        return flags > a.flags;
+        int a = (data.attrib & _A_SUBDIR);
+        int b = (rhs.data.attrib & _A_SUBDIR);
+        return a > b;
     }
 };
 
 // Replicating some similar options.
 // http://www.man7.org/linux/man-pages/man1/ls.1.html
-//
 struct Options
 {
     bool   byline;     // -x, -c = by column (default)
@@ -80,22 +79,20 @@ struct Options
     bool   comma;      // -m
     bool   list;       // -l
     bool   recursive;  // -R
-    size_t maxname;
+    size_t winRight;
 };
 
-typedef vector<find_data_t> pathvec_t;
-typedef vector<string>      strvec_t;
-const size_t                Padding = 6;
+typedef vector<finddata_t> pathvec_t;
+typedef vector<string>     strvec_t;
+const size_t               Padding = 6;
+const size_t               MaxName = 40;
 
 void          writeColor(int fore, int back = CS_BLACK);
 unsigned char getColor(int fore, int back);
 void          listAll(const string&   cur,
                       const string&   ex,
                       const strvec_t& args,
-                      Options&        opts);
-
-
-
+                      const Options&  opts);
 
 int main(int argc, char** argv)
 {
@@ -105,13 +102,11 @@ int main(int argc, char** argv)
     Options  opts = {};
 
     CONSOLE_SCREEN_BUFFER_INFO info;
-
     _getcwd(buf, 260);
     string root_dir = buf;
-
     GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
+    opts.winRight = info.srWindow.Right;
 
-    opts.maxname = info.srWindow.Right;
     if (argc <= 1)
         args.push_back("*.*");
     else
@@ -161,10 +156,10 @@ int main(int argc, char** argv)
     return 0;
 }
 
-void listAll(const string&   root_dir,
-             const string&   ex,
+void listAll(const string&   curDir,
+             const string&   basePath,
              const strvec_t& args,
-             Options&        opts)
+             const Options&  opts)
 {
     _finddata_t find     = {};
     size_t      i        = 1;
@@ -173,12 +168,15 @@ void listAll(const string&   root_dir,
 
     if (opts.recursive)
     {
-        intptr_t fp = _findfirst((root_dir + "\\*.*").c_str(), &find);
+        intptr_t fp = _findfirst((curDir + "\\*.*").c_str(), &find);
         if (fp != -1)
         {
             do
             {
-                if (!(find.attrib & _A_SYSTEM) && find.attrib & _A_SUBDIR)
+                bool isSystem = (find.attrib & _A_SYSTEM) != 0;
+                bool skip     = !opts.all && (find.attrib & _A_HIDDEN) != 0;
+
+                if (!skip && !isSystem && find.attrib & _A_SUBDIR)
                 {
                     string dname = find.name;
                     if (dname != "." && dname != "..")
@@ -192,27 +190,23 @@ void listAll(const string&   root_dir,
     pathvec_t vec;
     for (string arg : args)
     {
-        intptr_t fp = _findfirst((root_dir + "\\" + arg).c_str(), &find);
+        intptr_t fp = _findfirst((curDir + "\\" + arg).c_str(), &find);
         if (fp != -1)
         {
             do
             {
-                find_data_t d = {find.name, root_dir, find, 0};
-
+                finddata_t d = {find.name, find};
                 if (!(find.attrib & _A_SYSTEM))
                 {
                     maxwidth = std::max<size_t>(d.name.size(), maxwidth);
                     if (maxwidth > 40)
                         maxwidth = 40;
 
-                    if (find.attrib & _A_SUBDIR)
-                        d.flags = 1;
-
                     if (d.name != "." && d.name != "..")
                     {
-                        if (d.name.size() > 40)
+                        if (d.name.size() > MaxName)
                         {
-                            d.name = d.name.substr(0, 37);
+                            d.name = d.name.substr(0, MaxName - 3);
                             d.name += "...";
                         }
                         vec.push_back(d);
@@ -225,23 +219,25 @@ void listAll(const string&   root_dir,
     stable_sort(vec.begin(), vec.end());
 
     i = 0;
-    for (find_data_t d : vec)
+    for (finddata_t d : vec)
     {
         if (!opts.all && d.data.attrib & _A_HIDDEN)
             continue;
 
-        if (opts.dirOnly && d.flags != 1)
+        if (opts.dirOnly && (d.data.attrib & _A_SUBDIR) != 0)
             continue;
+
         if (opts.list)
         {
-            string newEx;
-            if (ex.empty())
-                newEx = root_dir + "\\";
+            string subRoot;
+            if (basePath.empty())
+                subRoot = curDir + "\\";
             else
-                newEx = root_dir + "\\";
+                subRoot = curDir + "\\";
 
-            string full = newEx + d.name;
-            tm*    tval;
+            string full = subRoot + d.name;
+
+            tm* tval;
             tval = ::localtime((time_t*)&d.data.time_write);
 
             char buf[32];
@@ -256,15 +252,13 @@ void listAll(const string&   root_dir,
             cout << buf << ' ';
             if (d.data.attrib & _A_SUBDIR)
                 writeColor(CS_DARKGREEN);
-            else
-                writeColor(CS_WHITE);
-            cout << d.name << endl;
+
+            cout << d.name << '\n';
         }
         else
         {
             if (d.data.attrib & _A_SUBDIR)
                 writeColor(CS_DARKGREEN);
-
             if (d.data.attrib & _A_RDONLY)
                 writeColor(CS_GREY);
             if (d.data.attrib & _A_NORMAL)
@@ -274,16 +268,16 @@ void listAll(const string&   root_dir,
 
             cout << setw(maxwidth);
             if (opts.comma)
-                cout << left << ex + d.name + ',';
+                cout << left << basePath + d.name + ',';
             else
-                cout << left << ex + d.name;
+                cout << left << basePath + d.name;
             cout << ' ';
 
             if (opts.byline)
                 cout << '\n';
             else
             {
-                if ((i + 1) * (maxwidth + 2 * Padding) > opts.maxname)
+                if ((i + 1) * (maxwidth + 2 * Padding) > opts.winRight)
                 {
                     i = 0;
                     cout << '\n';
@@ -299,12 +293,13 @@ void listAll(const string&   root_dir,
     {
         for (string dir : dirs)
         {
-            string newEx;
-            if (ex.empty())
-                newEx = dir + "\\";
+            string subRoot;
+            if (basePath.empty())
+                subRoot = dir + "\\";
             else
-                newEx = ex + dir + "\\";
-            listAll(root_dir + "\\" + dir, newEx, args, opts);
+                subRoot = basePath + dir + "\\";
+
+            listAll(curDir + "\\" + dir, subRoot, args, opts);
         }
     }
 }
@@ -313,10 +308,7 @@ void writeColor(int fg, int bg)
 {
     if (fg < 0 || fg > CS_COLOR_MAX || bg < 0 || bg > CS_COLOR_MAX)
         return;
-
-    ::SetConsoleTextAttribute(
-        ::GetStdHandle(STD_OUTPUT_HANDLE),
-        getColor(fg, bg));
+    ::SetConsoleTextAttribute(::GetStdHandle(STD_OUTPUT_HANDLE), getColor(fg, bg));
 }
 
 const unsigned char COLOR_TABLE[16][16] = {
