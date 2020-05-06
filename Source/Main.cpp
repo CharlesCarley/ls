@@ -30,6 +30,7 @@
 #include <cassert>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -168,6 +169,9 @@ void calculateColumns(pathvec_t&     vec,
                       ivec_t&        iv,
                       const size_t   maxWidth,
                       const Options& opts);
+
+void getBytesString(string&        dest,
+                    const uint64_t val);
 
 bool shouldBeSkipped(const _finddata_t& val,
                      const Options&     opts);
@@ -388,9 +392,13 @@ void listAll(const string&   callDir,
             else
             {
                 writeColor(CS_YELLOW);
-                cout << d.data.size;
+                string bytes;
+                getBytesString(bytes, d.data.size);
+                cout << bytes;
                 cout << ' ';
                 nrfiles++;
+
+
                 nrbytes += d.data.size;
             }
 
@@ -488,6 +496,36 @@ BOOL WINAPI CtrlCallback(DWORD evt)
         return 1;
     }
     return 0;
+}
+
+void getBytesString(string&        dest,
+                    const uint64_t val)
+{
+    stringstream ss;
+    ss << val;
+    dest.clear();
+
+    string tmp = ss.str();
+    size_t i, s = tmp.size(); 
+    if (s > 3)
+    {
+        size_t k = (s % 3);
+        size_t j = k == 0 ? 1 : 0;
+        for (i = 0; i < s; ++i)
+        {
+            if (i+1 >= k)
+            {
+                dest.push_back(tmp[i]);
+                if (j % 3 == 0 && (i+1) < s)
+                    dest.push_back(',');
+                j++;
+            }
+            else
+                dest.push_back(tmp[i]);
+        }
+    }
+    else
+        dest = tmp;
 }
 
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
@@ -637,7 +675,10 @@ void writeReport(ListReport* rept)
     cout << Found;
     writeColor(CS_YELLOW);
     cout << '\n';
-    cout << right << rept->totalBytes;
+
+    string bytes;
+    getBytesString(bytes, rept->totalBytes);
+    cout << right << bytes;
     writeColor(CS_DARKYELLOW);
     cout << ' ' << Bytes;
     writeColor(CS_WHITE);
@@ -658,7 +699,11 @@ void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
 {
     writeColor(CS_YELLOW);
     cout << '\n';
-    cout << right << setw(SizeWidth) << sizeInBytes;
+
+    string bytes;
+    getBytesString(bytes, sizeInBytes);
+
+    cout << right << setw(SizeWidth) << bytes;
     writeColor(CS_DARKYELLOW);
 
     cout << ' ' << Bytes;
