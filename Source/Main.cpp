@@ -70,9 +70,14 @@ struct finddata_t
 
     static bool sort_size(const finddata_t& lhs, const finddata_t& rhs)
     {
-        return lhs.data.size < rhs.data.size;
+        // Give the directories a lower value so they are 
+        // first in the list when a file also has zero size.
+        int64_t a = (lhs.data.attrib & _A_SUBDIR) ? -1 : 0;
+        int64_t b = (rhs.data.attrib & _A_SUBDIR) ? -1 : 0;
+        return (lhs.data.size + a) < (rhs.data.size + b);
     }
 };
+
 
 // Replicating some similar options.
 // http://www.man7.org/linux/man-pages/man1/ls.1.html
