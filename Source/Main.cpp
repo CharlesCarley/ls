@@ -59,7 +59,6 @@ enum Colors
 struct finddata_t
 {
     string      name;
-    string      dispname;
     _finddata_t data;
 
     bool operator<(const finddata_t& rhs) const
@@ -79,21 +78,29 @@ struct finddata_t
 // http://www.man7.org/linux/man-pages/man1/ls.1.html
 struct Options
 {
-    bool   byline;     // -x, -c = by column (default)
-    bool   all;        // -a (hidden)
-    bool   dirOnly;    // -d
-    bool   fileOnly;   // -f only files
-    bool   comma;      // -m
-    bool   list;       // -l
-    bool   recursive;  // -R
-    bool   shortpath;  // -S
-    size_t winRight;
+    bool byline;     // -x, -c = by column (default)
+    bool all;        // -a (hidden)
+    bool dirOnly;    // -d
+    bool fileOnly;   // -f only files
+    bool comma;      // -m
+    bool list;       // -l
+    bool recursive;  // -R
+    bool shortpath;  // -S
+    int  winRight;
+};
+
+struct ListReport
+{
+    uint64_t totalBytes;
+    uint64_t totalFiles;
+    uint64_t totalDirectories;
 };
 
 typedef vector<finddata_t> pathvec_t;
 typedef vector<string>     strvec_t;
+typedef vector<size_t>     ivec_t;
 
-const size_t Padding         = 5;
+const size_t Padding         = 3;
 const size_t MaxName         = 28;
 const size_t SizeWidth       = 18;
 const char   SeperatorWin    = '\\';
@@ -108,7 +115,8 @@ unsigned char getColor(int fore, int back);
 void   listAll(const string&   cur,
                const string&   ex,
                const strvec_t& args,
-               const Options&  opts);
+               const Options&  opts,
+               ListReport*     rept);
 string combinePath(const string& path,
                    const string& subpath,
                    const string& search);
@@ -123,6 +131,10 @@ void   makeName(string&        dest,
 
 void writeListHeader(const string& directory, const Options& opts);
 void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
+void writeReport(ListReport* rept);
+
+void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts);
+bool shouldBeSkipped(const _finddata_t& val, const Options& opts);
 
 BOOL WINAPI CtrlCallback(DWORD evt);
 
@@ -137,14 +149,17 @@ int main(int argc, char** argv)
     SetConsoleCtrlHandler(CtrlCallback, TRUE);
     GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
 
+    // If the output is redirected this
+    // may become invalid.
     opts.winRight = info.srWindow.Right;
+    if (opts.winRight < 0 || opts.winRight > 150)
+        opts.winRight = 150;
 
     if (argc <= 1)
         args.push_back(DefaultWildcard);
     else
     {
-        i = 1;
-        while (i < argc)
+        for (i = 1; i < argc; ++i)
         {
             if (argv[i][0] == '-')
             {
@@ -183,11 +198,10 @@ int main(int argc, char** argv)
                     opts.recursive = true;
                     break;
                 }
-                ++i;
             }
             else
             {
-                string str = normalizePath(argv[i++]);
+                string str = normalizePath(argv[i]);
                 string path, arg;
                 splitPath(str, path, arg);
 
@@ -205,32 +219,41 @@ int main(int argc, char** argv)
             args.push_back(DefaultWildcard);
     }
 
+    ListReport  lr     = {};
+    ListReport* result = nullptr;
+    if (opts.list && opts.recursive)
+        result = &lr;
+
     if (!externals.empty())
     {
         for (string external : externals)
-            listAll(Empty, external, args, opts);
+            listAll(Empty, external, args, opts, result);
     }
     else if (!args.empty())
-        listAll(Empty, Empty, args, opts);
+        listAll(Empty, Empty, args, opts, result);
     else  // should never happen
         cout << "failed to collect any arguments!\n";
+
+    if (result)
+        writeReport(result);
+
     return 0;
 }
 
 void listAll(const string&   callDir,
              const string&   subDir,
              const strvec_t& args,
-             const Options&  opts)
+             const Options&  opts,
+             ListReport*     rept)
 {
     _finddata_t find     = {};
-    size_t      i        = 1, totalSize, nrfiles, nrdirs;
+    size_t      i        = 1, nrbytes, nrfiles, nrdirs;
     size_t      maxwidth = 0;
     strvec_t    dirs;
 
     if (opts.recursive)
     {
         string path = combinePath(callDir, subDir, DefaultWildcard);
-
         intptr_t fp = _findfirst(path.c_str(), &find);
         if (fp != -1)
         {
@@ -260,22 +283,12 @@ void listAll(const string&   callDir,
         {
             do
             {
-                finddata_t d = {find.name, find.name, find};
-                if (!(find.attrib & _A_SYSTEM))
+                if (!(find.attrib & _A_SYSTEM) && !shouldBeSkipped(find, opts))
                 {
+                    finddata_t d = {find.name, find};
                     maxwidth = std::max<size_t>(d.name.size(), maxwidth);
-                    if (maxwidth > MaxName)
-                        maxwidth = MaxName;
-
                     if (d.name != "." && d.name != "..")
-                    {
-                        if (d.name.size() > MaxName)
-                        {
-                            d.dispname = d.dispname.substr(0, MaxName - 3);
-                            d.dispname += "...";
-                        }
                         vec.push_back(d);
-                    }
                 }
             } while (_findnext(fp, &find) == 0);
 
@@ -283,7 +296,7 @@ void listAll(const string&   callDir,
         }
     }
 
-    nrfiles = nrdirs = totalSize = 0;
+    nrfiles = nrdirs = nrbytes = 0;
     if (!vec.empty())
     {
         if (opts.list)
@@ -295,18 +308,16 @@ void listAll(const string&   callDir,
             stable_sort(vec.begin(), vec.end());
     }
 
-    i = 0;
-    for (finddata_t d : vec)
-    {
-        bool isHidden = (d.data.attrib & _A_HIDDEN) != 0;
-        if (!opts.all && isHidden)
-            continue;
+    ivec_t colums;
+    calculateColumns(vec, colums, maxwidth, opts);
 
+    size_t k = 0;
+    for (i = 0; i < vec.size(); ++i)
+    {
+        const finddata_t& d = vec.at(i);
+        
+        bool isHidden    = (d.data.attrib & _A_HIDDEN) != 0;
         bool isDirectory = (d.data.attrib & _A_SUBDIR) != 0;
-        if (opts.dirOnly && !isDirectory)
-            continue;
-        if (opts.fileOnly && isDirectory)
-            continue;
 
         if (opts.list)
         {
@@ -317,11 +328,9 @@ void listAll(const string&   callDir,
 
             cout << right;
             cout << setw(SizeWidth);
-
             if (isDirectory)
             {
-                // fill the SizeWidth with space.
-                cout << ' ';
+                cout << ' ';  // filling SizeWidth
                 cout << ' ';
                 nrdirs++;
             }
@@ -331,7 +340,7 @@ void listAll(const string&   callDir,
                 cout << d.data.size;
                 cout << ' ';
                 nrfiles++;
-                totalSize += d.data.size;
+                nrbytes += d.data.size;
             }
 
             cout << left;
@@ -358,43 +367,41 @@ void listAll(const string&   callDir,
             else
                 writeColor(CS_WHITE);
 
-            if (!opts.byline)
-            {
-                // Find when this will write
-                // past the bounds of the window.
-                if (i * (maxwidth + 2 * Padding) >= opts.winRight)
-                {
-                    i = 0;
-                    cout << '\n';
-                }
-            }
-
-            cout << setw(maxwidth + Padding);
-
             string name;
-            makeName(name, subDir, (opts.byline || opts.shortpath) ? d.name : d.dispname, opts);
-            cout << left << name + ' ';
-
+            makeName(name, subDir, d.name, opts);
             if (opts.byline)
-                cout << '\n';
+                cout << name << '\n';
             else
-                ++i;
+            {
+                size_t col = k++ % colums.size();
+                cout << left;
+                cout << setw(colums.at(col) + Padding);
+                cout << name << ' ';
+                if (col == colums.size() - 1)
+                    cout << '\n';
+            }
         }
-
         // always set it back to the default color.
         writeColor(CS_WHITE);
+    }
+
+    if (rept)
+    {
+        rept->totalDirectories += nrdirs;
+        rept->totalFiles += nrfiles;
+        rept->totalBytes += nrbytes;
     }
 
     if (!vec.empty())
     {
         if (opts.list)
-            writeListFooter(totalSize, nrfiles, nrdirs);
+            writeListFooter(nrbytes, nrfiles, nrdirs);
     }
 
     if (opts.recursive)
     {
         for (string dir : dirs)
-            listAll(callDir, combinePath(subDir, dir, Empty), args, opts);
+            listAll(callDir, combinePath(subDir, dir, Empty), args, opts, rept);
     }
 }
 
@@ -427,6 +434,21 @@ BOOL WINAPI CtrlCallback(DWORD evt)
     return 0;
 }
 
+void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
+{
+    size_t nrCol = opts.winRight / (maxWidth + 2 * Padding) + 1;
+    size_t s = vec.size(), i, j, k = 0;
+
+    iv = ivec_t(nrCol, 0);
+    for (k = 0, i = 0; i < s; ++i)
+    {
+        const finddata_t& d = vec.at(i);
+        j                   = k % nrCol;
+        iv[j]               = max<size_t>(iv[j], d.name.size());
+        k++;
+    }
+}
+
 void makeName(string& dest, const string& subDir, const string& name, const Options& opts)
 {
     if (opts.byline)
@@ -436,9 +458,9 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
 
     if (opts.shortpath && dest.find(' ') != string::npos)
     {
-        string search = subDir + SeperatorWin+ name;
-        size_t len = (size_t)::GetShortPathName(search.c_str(), nullptr, 0);
-        if (len>0)
+        string search = subDir + SeperatorWin + name;
+        size_t len    = (size_t)::GetShortPathName(search.c_str(), nullptr, 0);
+        if (len > 0)
         {
             char* tmp = new char[len];
 
@@ -446,7 +468,7 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
             if (nlen != 0 && nlen <= len)
             {
                 tmp[nlen] = 0;
-                dest = tmp;
+                dest      = tmp;
 
                 if (!opts.byline)
                 {
@@ -461,6 +483,17 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
 
     if (opts.comma)
         dest.push_back(',');
+}
+
+bool shouldBeSkipped(const _finddata_t& val, const Options& opts)
+{
+    if (!opts.all && (val.attrib & _A_HIDDEN) != 0)
+        return true;
+    if (opts.dirOnly && (val.attrib & _A_SUBDIR) == 0)
+        return true;
+    if (opts.fileOnly && (val.attrib & _A_SUBDIR) != 0)
+        return true;
+    return false;
 }
 
 void splitPath(const string& input,
@@ -531,6 +564,31 @@ void writeListHeader(const string& directory, const Options& opts)
          << setw(space) << ' ' << title << setw(8) << ' ';
     cout << "Last Modified" << setw(10) << ' ';
     cout << "File Name\n\n";
+}
+
+void writeReport(ListReport* rept)
+{
+    cout << '\n';
+
+    writeColor(CS_WHITE);
+    cout << "Found: ";
+    writeColor(CS_YELLOW);
+    cout << '\n';
+    cout << right << rept->totalBytes;
+    writeColor(CS_DARKYELLOW);
+    cout << " bytes";
+    writeColor(CS_WHITE);
+
+    cout << right << ' ' << rept->totalFiles << " file(s)";
+    if (rept->totalDirectories != 0)
+    {
+        cout << " and ";
+        if (rept->totalDirectories > 1)
+            cout << rept->totalDirectories << " directories";
+        else
+            cout << rept->totalDirectories << " directory";
+    }
+    cout << '\n';
 }
 
 void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
