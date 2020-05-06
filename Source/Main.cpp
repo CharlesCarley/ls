@@ -112,41 +112,58 @@ void          help();
 void          writeColor(int fore, int back = CS_BLACK);
 unsigned char getColor(int fore, int back);
 
-void   listAll(const string&   cur,
-               const string&   ex,
-               const strvec_t& args,
-               const Options&  opts,
-               ListReport*     rept);
-string combinePath(const string& path,
-                   const string& subpath,
-                   const string& search);
+void listAll(const string&   cur,
+             const string&   ex,
+             const strvec_t& args,
+             const Options&  opts,
+             ListReport*     rept);
+
+void combinePath(string&       dest,
+                 const string& path,
+                 const string& subpath,
+                 const string& search);
+
 void   splitPath(const string& input,
                  string&       path,
                  string&       pattern);
-string normalizePath(const string& input);
-void   makeName(string&        dest,
-                const string&  subDir,
-                const string&  name,
-                const Options& opts);
 
-void writeListHeader(const string& directory, const Options& opts);
-void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
+string normalizePath(const string& input);
+
+void makeName(string&        dest,
+              const string&  subDir,
+              const string&  name,
+              const Options& opts);
+
+void writeListHeader(const string&  directory,
+                     const Options& opts);
+
+void writeListFooter(size_t sizeInBytes,
+                     size_t files,
+                     size_t dirs);
+
 void writeReport(ListReport* rept);
 
-void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts);
-bool shouldBeSkipped(const _finddata_t& val, const Options& opts);
+void calculateColumns(pathvec_t&     vec,
+                      ivec_t&        iv,
+                      const size_t   maxWidth,
+                      const Options& opts);
+
+bool shouldBeSkipped(const _finddata_t& val,
+                     const Options&     opts);
 
 BOOL WINAPI CtrlCallback(DWORD evt);
 
+
+
 int main(int argc, char** argv)
 {
-    size_t                     i;
-    strvec_t                   args, externals;
-    Options                    opts = {};
-    CONSOLE_SCREEN_BUFFER_INFO info;
-    string                     root_dir;
+    size_t   i;
+    strvec_t args, externals;
+    Options  opts = {};
 
     SetConsoleCtrlHandler(CtrlCallback, TRUE);
+
+    CONSOLE_SCREEN_BUFFER_INFO info;
     GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
 
     // If the output is redirected this
@@ -253,7 +270,9 @@ void listAll(const string&   callDir,
 
     if (opts.recursive)
     {
-        string path = combinePath(callDir, subDir, DefaultWildcard);
+        string path;
+        combinePath(path, callDir, subDir, DefaultWildcard);
+
         intptr_t fp = _findfirst(path.c_str(), &find);
         if (fp != -1)
         {
@@ -269,14 +288,16 @@ void listAll(const string&   callDir,
                         dirs.push_back(find.name);
                 }
             } while (_findnext(fp, &find) == 0);
+
+            _findclose(fp);
         }
-        _findclose(fp);
     }
 
     pathvec_t vec;
     for (string arg : args)
     {
-        string subpath = combinePath(callDir, subDir, arg);
+        string subpath;
+        combinePath(subpath, callDir, subDir, arg);
 
         intptr_t fp = _findfirst(subpath.c_str(), &find);
         if (fp != -1)
@@ -286,6 +307,7 @@ void listAll(const string&   callDir,
                 if (!(find.attrib & _A_SYSTEM) && !shouldBeSkipped(find, opts))
                 {
                     finddata_t d = {find.name, find};
+
                     maxwidth = std::max<size_t>(d.name.size(), maxwidth);
                     if (d.name != "." && d.name != "..")
                         vec.push_back(d);
@@ -315,7 +337,7 @@ void listAll(const string&   callDir,
     for (i = 0; i < vec.size(); ++i)
     {
         const finddata_t& d = vec.at(i);
-        
+
         bool isHidden    = (d.data.attrib & _A_HIDDEN) != 0;
         bool isDirectory = (d.data.attrib & _A_SUBDIR) != 0;
 
@@ -369,9 +391,7 @@ void listAll(const string&   callDir,
 
             string name;
             makeName(name, subDir, d.name, opts);
-            if (opts.byline)
-                cout << name << '\n';
-            else
+            if (!opts.byline)
             {
                 size_t col = k++ % colums.size();
                 cout << left;
@@ -379,8 +399,10 @@ void listAll(const string&   callDir,
                 cout << name << ' ';
                 if (col == colums.size() - 1)
                     cout << '\n';
-            }
+            }else
+                cout << name << '\n';
         }
+
         // always set it back to the default color.
         writeColor(CS_WHITE);
     }
@@ -392,16 +414,20 @@ void listAll(const string&   callDir,
         rept->totalBytes += nrbytes;
     }
 
-    if (!vec.empty())
+    if (opts.list)
     {
-        if (opts.list)
+        if (!vec.empty())
             writeListFooter(nrbytes, nrfiles, nrdirs);
     }
 
     if (opts.recursive)
     {
         for (string dir : dirs)
-            listAll(callDir, combinePath(subDir, dir, Empty), args, opts, rept);
+        {
+            string path;
+            combinePath(path, subDir, dir, Empty);
+            listAll(callDir, path, args, opts, rept);
+        }
     }
 }
 
@@ -422,6 +448,7 @@ void help()
     exit(0);
 }
 
+
 BOOL WINAPI CtrlCallback(DWORD evt)
 {
     if (evt == CTRL_C_EVENT || evt == CTRL_BREAK_EVENT)
@@ -436,18 +463,25 @@ BOOL WINAPI CtrlCallback(DWORD evt)
 
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
 {
-    size_t nrCol = opts.winRight / (maxWidth + 2 * Padding) + 1;
     size_t s = vec.size(), i, j, k = 0;
+    size_t nrCol = opts.winRight / (maxWidth + 2 * Padding) + 1;
+    if (nrCol > 10)
+        nrCol = 10;
+  
 
     iv = ivec_t(nrCol, 0);
     for (k = 0, i = 0; i < s; ++i)
     {
         const finddata_t& d = vec.at(i);
-        j                   = k % nrCol;
-        iv[j]               = max<size_t>(iv[j], d.name.size());
+
+        j = k % nrCol;
+
+        iv[j] = max<size_t>(iv[j], d.name.size());
         k++;
     }
 }
+
+
 
 void makeName(string& dest, const string& subDir, const string& name, const Options& opts)
 {
@@ -458,25 +492,26 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
 
     if (opts.shortpath && dest.find(' ') != string::npos)
     {
+
         string search = subDir + SeperatorWin + name;
-        size_t len    = (size_t)::GetShortPathName(search.c_str(), nullptr, 0);
+
+        size_t len = (size_t)::GetShortPathName(search.c_str(), nullptr, 0);
         if (len > 0)
         {
-            char* tmp = new char[len];
+            char* tmp = new char[len+1];
 
             size_t nlen = ::GetShortPathName((subDir + name).c_str(), tmp, (DWORD)len);
             if (nlen != 0 && nlen <= len)
             {
-                tmp[nlen] = 0;
-                dest      = tmp;
+                tmp[nlen] = 0; 
 
+                dest = tmp;
                 if (!opts.byline)
                 {
                     string pth;
                     splitPath(dest, pth, dest);
                 }
             }
-
             delete[] tmp;
         }
     }
@@ -496,20 +531,21 @@ bool shouldBeSkipped(const _finddata_t& val, const Options& opts)
     return false;
 }
 
+
 void splitPath(const string& input,
                string&       path,
-               string&       pattern)
+               string&       ptrn)
 {
     size_t pos = input.find_last_of(SeperatorWin);
     if (pos != string::npos)
     {
-        path    = input.substr(0, pos + 1);
-        pattern = input.substr(pos + 1, input.size());
+        path = input.substr(0, pos + 1);
+        ptrn = input.substr(pos + 1, input.size());
     }
     else
     {
-        path    = Empty;
-        pattern = input;
+        path = Empty;
+        ptrn = input;
     }
 }
 
@@ -522,28 +558,29 @@ string normalizePath(const string& input)
     return rval;
 }
 
-string combinePath(const string& path,
-                   const string& subpath,
-                   const string& search)
+void combinePath(string&       dest,
+                 const string& path,
+                 const string& subpath,
+                 const string& search)
 {
-    string rval = path;
-    if (!rval.empty())
+    dest = path;
+    if (!dest.empty())
     {
-        if (rval.back() != SeperatorWin)
-            rval += SeperatorWin;
+        if (dest.back() != SeperatorWin)
+            dest.push_back(SeperatorWin);
     }
+
     if (!subpath.empty())
-        rval += subpath;
+        dest += subpath;
 
-    if (!rval.empty())
+    if (!dest.empty())
     {
-        if (rval.back() != SeperatorWin)
-            rval += SeperatorWin;
+        if (dest.back() != SeperatorWin)
+            dest.push_back(SeperatorWin);
     }
-    if (!search.empty())
-        rval += search;
 
-    return rval;
+    if (!search.empty())
+        dest += search;
 }
 
 void writeListHeader(const string& directory, const Options& opts)
@@ -565,6 +602,7 @@ void writeListHeader(const string& directory, const Options& opts)
     cout << "Last Modified" << setw(10) << ' ';
     cout << "File Name\n\n";
 }
+
 
 void writeReport(ListReport* rept)
 {
