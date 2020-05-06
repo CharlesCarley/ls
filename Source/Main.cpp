@@ -126,8 +126,6 @@ void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
 
 BOOL WINAPI CtrlCallback(DWORD evt);
 
-
-
 int main(int argc, char** argv)
 {
     size_t                     i;
@@ -274,7 +272,7 @@ void listAll(const string&   callDir,
                         if (d.name.size() > MaxName)
                         {
                             d.dispname = d.dispname.substr(0, MaxName - 3);
-                            d.dispname  += "...";
+                            d.dispname += "...";
                         }
                         vec.push_back(d);
                     }
@@ -374,7 +372,7 @@ void listAll(const string&   callDir,
             cout << setw(maxwidth + Padding);
 
             string name;
-            makeName(name, subDir, opts.byline ? d.name : d.dispname, opts);
+            makeName(name, subDir, (opts.byline || opts.shortpath) ? d.name : d.dispname, opts);
             cout << left << name + ' ';
 
             if (opts.byline)
@@ -399,7 +397,6 @@ void listAll(const string&   callDir,
             listAll(callDir, combinePath(subDir, dir, Empty), args, opts);
     }
 }
-
 
 void help()
 {
@@ -433,28 +430,37 @@ BOOL WINAPI CtrlCallback(DWORD evt)
 void makeName(string& dest, const string& subDir, const string& name, const Options& opts)
 {
     if (opts.byline)
-    {
         dest = subDir + name;
-        if (opts.shortpath && dest.find(' ') != string::npos)
-        {
-            size_t len = dest.size();
-            char*  tmp = new char[len];
+    else
+        dest = name;
 
-            len = ::GetShortPathName(dest.c_str(), tmp, (DWORD)len);
-            if (len != 0)
+    if (opts.shortpath && dest.find(' ') != string::npos)
+    {
+        string search = subDir + SeperatorWin+ name;
+        size_t len = (size_t)::GetShortPathName(search.c_str(), nullptr, 0);
+        if (len>0)
+        {
+            char* tmp = new char[len];
+
+            size_t nlen = ::GetShortPathName((subDir + name).c_str(), tmp, (DWORD)len);
+            if (nlen != 0 && nlen <= len)
+            {
+                tmp[nlen] = 0;
                 dest = tmp;
+
+                if (!opts.byline)
+                {
+                    string pth;
+                    splitPath(dest, pth, dest);
+                }
+            }
 
             delete[] tmp;
         }
-        if (opts.comma)
-            dest.push_back(',');
     }
-    else
-    {
-        dest = name;
-        if (opts.comma)
-            dest.push_back(',');
-    }
+
+    if (opts.comma)
+        dest.push_back(',');
 }
 
 void splitPath(const string& input,
@@ -507,7 +513,7 @@ string combinePath(const string& path,
     return rval;
 }
 
-void writeListHeader(const string& directory, const Options &opts)
+void writeListHeader(const string& directory, const Options& opts)
 {
     if (!directory.empty())
     {
