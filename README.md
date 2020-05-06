@@ -16,7 +16,7 @@ options:
     -m add a comma after each entry.
     -R list recursively.
     -l list the file size, last write time and the file name.
-    -S build a short path name. Used with -x option.
+    -S build a short path name. used with the -x and the -l options.
     -h show this help message.
 ```
 

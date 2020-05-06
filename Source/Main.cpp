@@ -121,7 +121,7 @@ void   makeName(string&        dest,
                 const string&  name,
                 const Options& opts);
 
-void writeListHeader(const string& directory);
+void writeListHeader(const string& directory, const Options& opts);
 void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs);
 
 BOOL WINAPI CtrlCallback(DWORD evt);
@@ -291,7 +291,7 @@ void listAll(const string&   callDir,
         if (opts.list)
         {
             sort(vec.begin(), vec.end(), finddata_t::sort_size);
-            writeListHeader(subDir);
+            writeListHeader(subDir, opts);
         }
         else
             stable_sort(vec.begin(), vec.end());
@@ -413,7 +413,7 @@ void help()
     cout << "    -m add a comma after each entry.\n";
     cout << "    -R list recursively.\n";
     cout << "    -l list the file size, last write time and the file name.\n";
-    cout << "    -S build a short path name. Used with -x option.\n";
+    cout << "    -S build a short path name. used with the -x and the -l options.\n";
     cout << "    -h show this help message.\n";
     exit(0);
 }
@@ -507,13 +507,16 @@ string combinePath(const string& path,
     return rval;
 }
 
-void writeListHeader(const string& directory)
+void writeListHeader(const string& directory, const Options &opts)
 {
     if (!directory.empty())
     {
         writeColor(CS_GREEN);
         cout << '\n';
-        cout << directory << '\n';
+
+        string dir;
+        makeName(dir, directory, Empty, opts);
+        cout << dir << '\n';
     }
     writeColor(CS_LIGHT_GREY);
     string title = "Size in Bytes";
