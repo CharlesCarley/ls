@@ -105,8 +105,23 @@ const size_t MaxName         = 28;
 const size_t SizeWidth       = 18;
 const char   SeperatorWin    = '\\';
 const char   SeperatorNx     = '/';
-const string DefaultWildcard = "*";
+const char   DefaultWildcard = '*';
 const string Empty           = "";
+const string Wildcard        = string(1, DefaultWildcard);
+
+// Precomputed strings and offsets
+const string SizeInBytes     = "Size in Bytes";
+const string LastUsed        = "Last Modified";
+const string FileName        = "Name";
+const string Bytes           = "bytes";
+const string Files           = " file(s)";
+const string Directory       = " directory";
+const string Directories     = " directories";
+const string Found           = "Found: ";
+const string And             = " and ";
+const size_t SizeLabelCenter = 3;
+const size_t LastModCenter   = 6;
+const size_t NameLeft        = 5;
 
 void          help();
 void          writeColor(int fore, int back = CS_BLACK);
@@ -123,11 +138,12 @@ void combinePath(string&       dest,
                  const string& subpath,
                  const string& search);
 
-void   splitPath(const string& input,
-                 string&       path,
-                 string&       pattern);
+void splitPath(const string& input,
+               string&       path,
+               string&       pattern);
 
-string normalizePath(const string& input);
+void normalizePath(string&       dest,
+                   const string& input);
 
 void makeName(string&        dest,
               const string&  subDir,
@@ -153,8 +169,6 @@ bool shouldBeSkipped(const _finddata_t& val,
 
 BOOL WINAPI CtrlCallback(DWORD evt);
 
-
-
 int main(int argc, char** argv)
 {
     size_t   i;
@@ -164,17 +178,21 @@ int main(int argc, char** argv)
     SetConsoleCtrlHandler(CtrlCallback, TRUE);
 
     CONSOLE_SCREEN_BUFFER_INFO info;
-    GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info);
-
-    // If the output is redirected this
-    // may become invalid.
-    opts.winRight = info.srWindow.Right;
-    if (opts.winRight < 0 || opts.winRight > 150)
+    if (GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info) == 0)
+    {
+        // Just set it to something
         opts.winRight = 150;
-
-    if (argc <= 1)
-        args.push_back(DefaultWildcard);
+    }
     else
+    {
+        // If the output is redirected this
+        // may become invalid, and should be handled above.
+        opts.winRight = info.srWindow.Right;
+        if (opts.winRight < 0 || opts.winRight > 150)
+            opts.winRight = 150;
+    }
+
+    if (argc > 1)
     {
         for (i = 1; i < argc; ++i)
         {
@@ -218,23 +236,27 @@ int main(int argc, char** argv)
             }
             else
             {
-                string str = normalizePath(argv[i]);
                 string path, arg;
+                string str;
+
+                normalizePath(str, argv[i]);
                 splitPath(str, path, arg);
 
                 externals.push_back(path);
 
                 if (arg.find(DefaultWildcard) == string::npos)
-                    arg += SeperatorWin;
-                if (arg.back() == SeperatorWin || str.back() == SeperatorNx)
-                    arg += DefaultWildcard;
+                    arg.push_back(SeperatorWin);
+                if (arg.back() == SeperatorWin)
+                    arg.push_back(DefaultWildcard);
 
                 args.push_back(arg);
             }
         }
         if (args.empty())
-            args.push_back(DefaultWildcard);
+            args.push_back(Wildcard);
     }
+    else
+        args.push_back(Wildcard);
 
     ListReport  lr     = {};
     ListReport* result = nullptr;
@@ -246,10 +268,11 @@ int main(int argc, char** argv)
         for (string external : externals)
             listAll(Empty, external, args, opts, result);
     }
-    else if (!args.empty())
+    else
+    {
+        assert(!args.empty());
         listAll(Empty, Empty, args, opts, result);
-    else  // should never happen
-        cout << "failed to collect any arguments!\n";
+    }
 
     if (result)
         writeReport(result);
@@ -271,7 +294,7 @@ void listAll(const string&   callDir,
     if (opts.recursive)
     {
         string path;
-        combinePath(path, callDir, subDir, DefaultWildcard);
+        combinePath(path, callDir, subDir, Wildcard);
 
         intptr_t fp = _findfirst(path.c_str(), &find);
         if (fp != -1)
@@ -283,8 +306,8 @@ void listAll(const string&   callDir,
 
                 if (!skip && !isSystem && find.attrib & _A_SUBDIR)
                 {
-                    string dname = find.name;
-                    if (dname != "." && dname != "..")
+                    // exclude the . and .. entries
+                    if (find.name[0] != '.' && find.name[1] != '.')
                         dirs.push_back(find.name);
                 }
             } while (_findnext(fp, &find) == 0);
@@ -306,11 +329,12 @@ void listAll(const string&   callDir,
             {
                 if (!(find.attrib & _A_SYSTEM) && !shouldBeSkipped(find, opts))
                 {
-                    finddata_t d = {find.name, find};
-
-                    maxwidth = std::max<size_t>(d.name.size(), maxwidth);
-                    if (d.name != "." && d.name != "..")
+                    if (find.name[0] != '.' && find.name[1] != '.')
+                    {
+                        finddata_t d = {find.name, find};
+                        maxwidth     = std::max<size_t>(d.name.size(), maxwidth);
                         vec.push_back(d);
+                    }
                 }
             } while (_findnext(fp, &find) == 0);
 
@@ -344,9 +368,9 @@ void listAll(const string&   callDir,
         if (opts.list)
         {
             tm   tval;
-            char buf[32] = {};
+            char buf[22] = {}; 
             if (::localtime_s(&tval, (time_t*)&d.data.time_write) == 0)
-                ::strftime(buf, 32, "%D %r", &tval);
+                ::strftime(buf, 22, "%D %r", &tval);
 
             cout << right;
             cout << setw(SizeWidth);
@@ -399,7 +423,8 @@ void listAll(const string&   callDir,
                 cout << name << ' ';
                 if (col == colums.size() - 1)
                     cout << '\n';
-            }else
+            }
+            else
                 cout << name << '\n';
         }
 
@@ -448,7 +473,6 @@ void help()
     exit(0);
 }
 
-
 BOOL WINAPI CtrlCallback(DWORD evt)
 {
     if (evt == CTRL_C_EVENT || evt == CTRL_BREAK_EVENT)
@@ -467,21 +491,17 @@ void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const O
     size_t nrCol = opts.winRight / (maxWidth + 2 * Padding) + 1;
     if (nrCol > 10)
         nrCol = 10;
-  
 
     iv = ivec_t(nrCol, 0);
     for (k = 0, i = 0; i < s; ++i)
     {
         const finddata_t& d = vec.at(i);
 
-        j = k % nrCol;
-
+        j     = k % nrCol;
         iv[j] = max<size_t>(iv[j], d.name.size());
         k++;
     }
 }
-
-
 
 void makeName(string& dest, const string& subDir, const string& name, const Options& opts)
 {
@@ -492,18 +512,17 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
 
     if (opts.shortpath && dest.find(' ') != string::npos)
     {
-
         string search = subDir + SeperatorWin + name;
 
         size_t len = (size_t)::GetShortPathName(search.c_str(), nullptr, 0);
         if (len > 0)
         {
-            char* tmp = new char[len+1];
+            char* tmp = new char[len + 1];
 
             size_t nlen = ::GetShortPathName((subDir + name).c_str(), tmp, (DWORD)len);
             if (nlen != 0 && nlen <= len)
             {
-                tmp[nlen] = 0; 
+                tmp[nlen] = 0;
 
                 dest = tmp;
                 if (!opts.byline)
@@ -531,7 +550,6 @@ bool shouldBeSkipped(const _finddata_t& val, const Options& opts)
     return false;
 }
 
-
 void splitPath(const string& input,
                string&       path,
                string&       ptrn)
@@ -549,13 +567,13 @@ void splitPath(const string& input,
     }
 }
 
-string normalizePath(const string& input)
+void normalizePath(string&       dest,
+                   const string& input)
 {
-    string rval = input;
+    dest = input;
     size_t pos;
-    while ((pos = rval.find(SeperatorNx)) != string::npos)
-        rval = rval.replace(pos, 1, &SeperatorWin);
-    return rval;
+    while ((pos = dest.find(SeperatorNx)) != string::npos)
+        dest = dest.replace(pos, 1, &SeperatorWin);
 }
 
 void combinePath(string&       dest,
@@ -580,51 +598,53 @@ void combinePath(string&       dest,
     }
 
     if (!search.empty())
-        dest += search;
+    {
+        if (search.front() == SeperatorWin)
+            dest += search.substr(1, search.size());
+        else
+            dest += search;
+    }
 }
 
 void writeListHeader(const string& directory, const Options& opts)
 {
     if (!directory.empty())
     {
-        writeColor(CS_GREEN);
+        writeColor(CS_DARKGREEN);
         cout << '\n';
-
         string dir;
         makeName(dir, directory, Empty, opts);
         cout << dir << '\n';
     }
     writeColor(CS_LIGHT_GREY);
-    string title = "Size in Bytes";
-    size_t space = (SizeWidth - title.size()) / 2;
-    cout << '\n'
-         << setw(space) << ' ' << title << setw(8) << ' ';
-    cout << "Last Modified" << setw(10) << ' ';
-    cout << "File Name\n\n";
+    cout << '\n';
+    cout << setw(SizeLabelCenter) << ' ' << SizeInBytes << setw(LastModCenter) << ' ';
+    cout << LastUsed << setw(NameLeft) << ' ';
+    cout << FileName;
+    cout << '\n';
+    cout << '\n';
 }
-
 
 void writeReport(ListReport* rept)
 {
     cout << '\n';
-
     writeColor(CS_WHITE);
-    cout << "Found: ";
+    cout << Found;
     writeColor(CS_YELLOW);
     cout << '\n';
     cout << right << rept->totalBytes;
     writeColor(CS_DARKYELLOW);
-    cout << " bytes";
+    cout << ' ' << Bytes;
     writeColor(CS_WHITE);
 
-    cout << right << ' ' << rept->totalFiles << " file(s)";
+    cout << right << ' ' << rept->totalFiles << Files;
     if (rept->totalDirectories != 0)
     {
-        cout << " and ";
+        cout << And;
         if (rept->totalDirectories > 1)
-            cout << rept->totalDirectories << " directories";
+            cout << rept->totalDirectories << Directories;
         else
-            cout << rept->totalDirectories << " directory";
+            cout << rept->totalDirectories << Directory;
     }
     cout << '\n';
 }
@@ -636,20 +656,20 @@ void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
     cout << right << setw(SizeWidth) << sizeInBytes;
     writeColor(CS_DARKYELLOW);
 
-    cout << " bytes";
+    cout << ' ' << Bytes;
     writeColor(CS_WHITE);
-
-    cout << right << setw(16) << ' ' << files << " file(s)";
+    cout << right << setw(16) << ' ' << files << Files;
     if (dirs != 0)
     {
-        cout << " and ";
+        cout << And;
         if (dirs > 1)
-            cout << dirs << " directories";
+            cout << dirs << Directories;
         else
-            cout << dirs << " directory";
+            cout << dirs << Directory;
     }
     cout << '\n';
 }
+
 
 void writeColor(int fg, int bg)
 {
