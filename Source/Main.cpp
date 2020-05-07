@@ -106,7 +106,7 @@ typedef vector<finddata_t> pathvec_t;
 typedef vector<string>     strvec_t;
 typedef vector<size_t>     ivec_t;
 
-const size_t Padding         = 3;
+const size_t Padding         = 2;
 const size_t MaxName         = 28;
 const size_t SizeWidth       = 18;
 const char   SeperatorWin    = '\\';
@@ -289,6 +289,12 @@ int main(int argc, char** argv)
     return 0;
 }
 
+bool isDotEntry(char *cp)
+{
+    return cp[0] == '.' && cp[1] == '\0' ||
+           cp[0] == '.' && cp[1] == '.' && cp[2] == '\0';
+}
+
 void listAll(const string&   callDir,
              const string&   subDir,
              const strvec_t& args,
@@ -315,8 +321,7 @@ void listAll(const string&   callDir,
 
                 if (!skip && !isSystem && find.attrib & _A_SUBDIR)
                 {
-                    // exclude the . and .. entries
-                    if (find.name[0] != '.' && find.name[1] != '.')
+                    if (!isDotEntry(find.name))
                         dirs.push_back(find.name);
                 }
             } while (_findnext(fp, &find) == 0);
@@ -338,7 +343,7 @@ void listAll(const string&   callDir,
             {
                 if (!(find.attrib & _A_SYSTEM) && !shouldBeSkipped(find, opts))
                 {
-                    if (find.name[0] != '.' && find.name[1] != '.')
+                    if (!isDotEntry(find.name))
                     {
                         finddata_t d = {find.name, find};
                         maxwidth     = std::max<size_t>(d.name.size(), maxwidth);
@@ -530,19 +535,19 @@ void getBytesString(string&        dest,
 
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
 {
-    size_t s = vec.size(), i, j, k = 0;
+    size_t s = vec.size(), i, j;
     size_t nrCol = opts.winRight / (maxWidth + 2 * Padding) + 1;
     if (nrCol > 10)
         nrCol = 10;
 
     iv = ivec_t(nrCol, 0);
-    for (k = 0, i = 0; i < s; ++i)
+    for (i = 0; i < s; ++i)
     {
         const finddata_t& d = vec.at(i);
 
-        j     = k % nrCol;
+        j = i % nrCol;
+
         iv[j] = max<size_t>(iv[j], d.name.size());
-        k++;
     }
 }
 
@@ -562,7 +567,7 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
         {
             char* tmp = new char[len + 1];
 
-            size_t nlen = ::GetShortPathName((subDir + name).c_str(), tmp, (DWORD)len);
+            size_t nlen = (size_t)::GetShortPathName(search.c_str(), tmp, (DWORD)len);
             if (nlen != 0 && nlen <= len)
             {
                 tmp[nlen] = 0;
@@ -586,7 +591,7 @@ bool shouldBeSkipped(const _finddata_t& val, const Options& opts)
 {
     if (!opts.all && (val.attrib & _A_HIDDEN) != 0)
         return true;
-    if (opts.dirOnly && (val.attrib & _A_SUBDIR) == 0)
+    if (opts.dirOnly && !(val.attrib & _A_SUBDIR))
         return true;
     if (opts.fileOnly && (val.attrib & _A_SUBDIR) != 0)
         return true;
