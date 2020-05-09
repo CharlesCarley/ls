@@ -106,7 +106,6 @@ typedef vector<finddata_t> pathvec_t;
 typedef vector<string>     strvec_t;
 typedef vector<size_t>     ivec_t;
 
-const size_t Padding         = 2;
 const size_t MaxName         = 28;
 const size_t SizeWidth       = 18;
 const char   SeperatorWin    = '\\';
@@ -190,15 +189,13 @@ int main(int argc, char** argv)
     if (GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info) == 0)
     {
         // Just set it to something
-        opts.winRight = 150;
+        opts.winRight = 100;
     }
     else
     {
         // If the output is redirected this
         // may become invalid, and should be handled above.
-        opts.winRight = info.srWindow.Right;
-        if (opts.winRight < 0 || opts.winRight > 150)
-            opts.winRight = 150;
+        opts.winRight = info.dwSize.X;
     }
 
     if (argc > 1)
@@ -437,7 +434,7 @@ void listAll(const string&   callDir,
             {
                 size_t col = k++ % colums.size();
                 cout << left;
-                cout << setw(colums.at(col) + Padding);
+                cout << setw(colums.at(col) + 1);
                 cout << name << ' ';
                 if (col == colums.size() - 1)
                     cout << '\n';
@@ -514,7 +511,7 @@ void getBytesString(string&        dest,
     size_t i, s = tmp.size(); 
     if (s > 3)
     {
-        size_t k = (s % 3);
+        size_t k = s % 3;
         size_t j = k == 0 ? 1 : 0;
         for (i = 0; i < s; ++i)
         {
@@ -536,7 +533,7 @@ void getBytesString(string&        dest,
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
 {
     size_t s = vec.size(), i, j;
-    size_t nrCol = opts.winRight / (maxWidth + 2 * Padding) + 1;
+    size_t nrCol = opts.winRight / (maxWidth + 1 ) + 1;
     if (nrCol > 10)
         nrCol = 10;
 
