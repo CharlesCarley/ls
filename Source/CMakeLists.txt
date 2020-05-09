@@ -1,1 +1,1 @@
-add_executable(ls Main.cpp)
+add_executable(ls Main.cpp ../README.md)

@@ -84,14 +84,15 @@ struct finddata_t
 // http://www.man7.org/linux/man-pages/man1/ls.1.html
 struct Options
 {
-    bool byline;     // -x, -c = by column (default)
-    bool all;        // -a (hidden)
-    bool dirOnly;    // -d
-    bool fileOnly;   // -f only files
-    bool comma;      // -m
-    bool list;       // -l
-    bool recursive;  // -R
-    bool shortpath;  // -S
+    bool byline;         // -x, -c = by column (default)
+    bool all;            // -a (hidden)
+    bool system;         // -as (system)
+    bool dirOnly;        // -d
+    bool fileOnly;       // -f only files
+    bool comma;          // -m
+    bool list;           // -l
+    bool recursive;      // -R
+    bool shortpath;      // -S
     int  winRight;
 };
 
@@ -172,7 +173,7 @@ void calculateColumns(pathvec_t&     vec,
 void getBytesString(string&        dest,
                     const uint64_t val);
 
-bool shouldBeSkipped(const _finddata_t& val,
+bool shouldBeIncluded(const _finddata_t& val,
                      const Options&     opts);
 
 BOOL WINAPI CtrlCallback(DWORD evt);
@@ -214,6 +215,8 @@ int main(int argc, char** argv)
                     opts.byline = false;
                     break;
                 case 'a':
+                    if (argv[i][2] == 's')
+                        opts.system = true;
                     opts.all = true;
                     break;
                 case 'd':
@@ -313,7 +316,7 @@ void listAll(const string&   callDir,
         {
             do
             {
-                bool isSystem = (find.attrib & _A_SYSTEM) != 0;
+                bool isSystem = !opts.system && (find.attrib & _A_SYSTEM) != 0;
                 bool skip     = !opts.all && (find.attrib & _A_HIDDEN) != 0;
 
                 if (!skip && !isSystem && find.attrib & _A_SUBDIR)
@@ -338,7 +341,7 @@ void listAll(const string&   callDir,
         {
             do
             {
-                if (!(find.attrib & _A_SYSTEM) && !shouldBeSkipped(find, opts))
+                if (shouldBeIncluded(find, opts))
                 {
                     if (!isDotEntry(find.name))
                     {
@@ -375,6 +378,7 @@ void listAll(const string&   callDir,
 
         bool isHidden    = (d.data.attrib & _A_HIDDEN) != 0;
         bool isDirectory = (d.data.attrib & _A_SUBDIR) != 0;
+        bool isSystem    = (d.data.attrib & _A_SYSTEM) != 0;
 
         if (opts.list)
         {
@@ -397,10 +401,9 @@ void listAll(const string&   callDir,
                 string bytes;
                 getBytesString(bytes, d.data.size);
                 cout << bytes;
+
                 cout << ' ';
                 nrfiles++;
-
-
                 nrbytes += d.data.size;
             }
 
@@ -408,18 +411,21 @@ void listAll(const string&   callDir,
             writeColor(CS_LIGHT_GREY);
             cout << buf << ' ';
 
-            if (isHidden)
+            if (isSystem)
+                writeColor(CS_MAGENTA);
+            else if (isHidden)
                 writeColor(CS_GREY);
             else if (isDirectory)
                 writeColor(CS_GREEN);
             else
                 writeColor(CS_WHITE);
-
             cout << d.name << '\n';
         }
         else
         {
-            if (isDirectory && isHidden)
+            if (isSystem)
+                writeColor(CS_MAGENTA);
+            else if (isDirectory && isHidden)
                 writeColor(CS_GREY);
             else if (isDirectory)
                 writeColor(CS_GREEN);
@@ -475,16 +481,17 @@ void help()
 {
     cout << "ls <options> wild-card\n\n";
     cout << "options:\n";
-    cout << "    -x list directory entries line by line.\n";
-    cout << "    -c list directory entries in columns (default).\n";
-    cout << "    -a list hidden files.\n";
-    cout << "    -d only list directories.\n";
-    cout << "    -f only list files.\n";
-    cout << "    -m add a comma after each entry.\n";
-    cout << "    -R list recursively.\n";
-    cout << "    -l list the file size, last write time and the file name.\n";
-    cout << "    -S build a short path name. used with the -x and the -l options.\n";
-    cout << "    -h show this help message.\n";
+    cout << "    -x  list directory entries line by line.\n";
+    cout << "    -c  list directory entries in columns (default).\n";
+    cout << "    -a  list hidden files.\n";
+    cout << "    -as list hidden files as well as system files.\n";
+    cout << "    -d  only list directories.\n";
+    cout << "    -f  only list files.\n";
+    cout << "    -m  add a comma after each entry.\n";
+    cout << "    -R  list recursively.\n";
+    cout << "    -l  list the file size, last write time and the file name.\n";
+    cout << "    -S  build a short path name. used with the -x and the -l options.\n";
+    cout << "    -h  show this help message.\n";
     exit(0);
 }
 
@@ -584,15 +591,17 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
         dest.push_back(',');
 }
 
-bool shouldBeSkipped(const _finddata_t& val, const Options& opts)
+bool shouldBeIncluded(const _finddata_t& val, const Options& opts)
 {
     if (!opts.all && (val.attrib & _A_HIDDEN) != 0)
-        return true;
+        return false;
+    if (!opts.system && (val.attrib & _A_SYSTEM) != 0)
+        return false;
     if (opts.dirOnly && !(val.attrib & _A_SUBDIR))
-        return true;
+        return false;
     if (opts.fileOnly && (val.attrib & _A_SUBDIR) != 0)
-        return true;
-    return false;
+        return false;
+    return true;
 }
 
 void splitPath(const string& input,
