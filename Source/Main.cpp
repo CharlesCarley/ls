@@ -130,7 +130,7 @@ const size_t LastModCenter   = 6;
 const size_t NameLeft        = 5;
 
 void          help();
-void          writeColor(int fore, int back = CS_BLACK);
+void          setColor(int fore, int back = CS_BLACK);
 unsigned char getColor(int fore, int back);
 
 void listAll(const string&   cur,
@@ -397,7 +397,7 @@ void listAll(const string&   callDir,
             }
             else
             {
-                writeColor(CS_YELLOW);
+                setColor(CS_YELLOW);
                 string bytes;
                 getBytesString(bytes, d.data.size);
                 cout << bytes;
@@ -408,31 +408,31 @@ void listAll(const string&   callDir,
             }
 
             cout << left;
-            writeColor(CS_LIGHT_GREY);
+            setColor(CS_LIGHT_GREY);
             cout << buf << ' ';
 
             if (isSystem)
-                writeColor(CS_MAGENTA);
+                setColor(CS_MAGENTA);
             else if (isHidden)
-                writeColor(CS_GREY);
+                setColor(CS_GREY);
             else if (isDirectory)
-                writeColor(CS_GREEN);
+                setColor(CS_GREEN);
             else
-                writeColor(CS_WHITE);
+                setColor(CS_WHITE);
             cout << d.name << '\n';
         }
         else
         {
             if (isSystem)
-                writeColor(CS_MAGENTA);
+                setColor(CS_MAGENTA);
             else if (isDirectory && isHidden)
-                writeColor(CS_GREY);
+                setColor(CS_GREY);
             else if (isDirectory)
-                writeColor(CS_GREEN);
+                setColor(CS_GREEN);
             else if (isHidden)
-                writeColor(CS_GREY);
+                setColor(CS_GREY);
             else
-                writeColor(CS_WHITE);
+                setColor(CS_WHITE);
 
             string name;
             makeName(name, subDir, d.name, opts);
@@ -448,9 +448,6 @@ void listAll(const string&   callDir,
             else
                 cout << name << '\n';
         }
-
-        // always set it back to the default color.
-        writeColor(CS_WHITE);
     }
 
     if (rept)
@@ -475,6 +472,8 @@ void listAll(const string&   callDir,
             listAll(callDir, path, args, opts, rept);
         }
     }
+
+    setColor(CS_WHITE);
 }
 
 void help()
@@ -500,7 +499,7 @@ BOOL WINAPI CtrlCallback(DWORD evt)
     if (evt == CTRL_C_EVENT || evt == CTRL_BREAK_EVENT)
     {
         // To prevent lingering colors.
-        writeColor(CS_WHITE);
+        setColor(CS_WHITE);
         ExitProcess(0);
         return 1;
     }
@@ -540,7 +539,7 @@ void getBytesString(string&        dest,
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
 {
     size_t s = vec.size(), i, j;
-    size_t nrCol = opts.winRight / (maxWidth + 1 ) + 1;
+    size_t nrCol = opts.winRight / (maxWidth + 5 ) + 1;
     if (nrCol > 10)
         nrCol = 10;
 
@@ -664,13 +663,13 @@ void writeListHeader(const string& directory, const Options& opts)
 {
     if (!directory.empty())
     {
-        writeColor(CS_DARKGREEN);
+        setColor(CS_DARKGREEN);
         cout << '\n';
         string dir;
         makeName(dir, directory, Empty, opts);
         cout << dir << '\n';
     }
-    writeColor(CS_LIGHT_GREY);
+    setColor(CS_LIGHT_GREY);
     cout << '\n';
     cout << setw(SizeLabelCenter) << ' ' << SizeInBytes << setw(LastModCenter) << ' ';
     cout << LastUsed << setw(NameLeft) << ' ';
@@ -682,17 +681,17 @@ void writeListHeader(const string& directory, const Options& opts)
 void writeReport(ListReport* rept)
 {
     cout << '\n';
-    writeColor(CS_WHITE);
+    setColor(CS_WHITE);
     cout << Found;
-    writeColor(CS_YELLOW);
+    setColor(CS_YELLOW);
     cout << '\n';
 
     string bytes;
     getBytesString(bytes, rept->totalBytes);
     cout << right << bytes;
-    writeColor(CS_DARKYELLOW);
+    setColor(CS_DARKYELLOW);
     cout << ' ' << Bytes;
-    writeColor(CS_WHITE);
+    setColor(CS_WHITE);
 
     cout << right << ' ' << rept->totalFiles << Files;
     if (rept->totalDirectories != 0)
@@ -708,17 +707,17 @@ void writeReport(ListReport* rept)
 
 void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
 {
-    writeColor(CS_YELLOW);
+    setColor(CS_YELLOW);
     cout << '\n';
 
     string bytes;
     getBytesString(bytes, sizeInBytes);
 
     cout << right << setw(SizeWidth) << bytes;
-    writeColor(CS_DARKYELLOW);
+    setColor(CS_DARKYELLOW);
 
     cout << ' ' << Bytes;
-    writeColor(CS_WHITE);
+    setColor(CS_WHITE);
     cout << right << setw(16) << ' ' << files << Files;
     if (dirs != 0)
     {
@@ -732,7 +731,7 @@ void writeListFooter(size_t sizeInBytes, size_t files, size_t dirs)
 }
 
 
-void writeColor(int fg, int bg)
+void setColor(int fg, int bg)
 {
     if (fg < 0 || fg > CS_COLOR_MAX || bg < 0 || bg > CS_COLOR_MAX)
         return;
