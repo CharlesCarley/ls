@@ -15,6 +15,7 @@ options:
     -d  only list directories.
     -f  only list files.
     -m  add a comma after each entry.
+    -q  surround entries in quotations.
     -R  list recursively.
     -l  list the file size, last write time and the file name.
     -S  build a short path name. 

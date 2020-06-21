@@ -90,6 +90,7 @@ struct Options
     bool dirOnly;        // -d
     bool fileOnly;       // -f only files
     bool comma;          // -m
+    bool quote;          // -q
     bool list;           // -l
     bool recursive;      // -R
     bool shortpath;      // -S
@@ -227,6 +228,9 @@ int main(int argc, char** argv)
                     break;
                 case 'm':
                     opts.comma = true;
+                    break;
+                case 'q':
+                    opts.quote = true;
                     break;
                 case 'l':
                     opts.list = true;
@@ -487,6 +491,7 @@ void help()
     cout << "    -d  only list directories.\n";
     cout << "    -f  only list files.\n";
     cout << "    -m  add a comma after each entry.\n";
+    cout << "    -q  surround entries in quotations.\n";
     cout << "    -R  list recursively.\n";
     cout << "    -l  list the file size, last write time and the file name.\n";
     cout << "    -S  build a short path name. used with the -x and the -l options.\n";
@@ -585,6 +590,9 @@ void makeName(string& dest, const string& subDir, const string& name, const Opti
             delete[] tmp;
         }
     }
+
+    if (opts.quote)
+        dest = "\"" + dest + "\"";
 
     if (opts.comma)
         dest.push_back(',');
