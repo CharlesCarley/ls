@@ -94,7 +94,7 @@ struct Options
     bool list;           // -l
     bool recursive;      // -R
     bool shortpath;      // -S
-    int  winRight;
+    int  winWidth;
 };
 
 struct ListReport
@@ -191,13 +191,13 @@ int main(int argc, char** argv)
     if (GetConsoleScreenBufferInfo(::GetStdHandle(STD_OUTPUT_HANDLE), &info) == 0)
     {
         // Just set it to something
-        opts.winRight = 100;
+        opts.winWidth = 100;
     }
     else
     {
         // If the output is redirected this
         // may become invalid, and should be handled above.
-        opts.winRight = info.dwSize.X;
+        opts.winWidth = info.dwSize.X;
     }
 
     if (argc > 1)
@@ -370,6 +370,7 @@ void listAll(const string&   callDir,
         }
         else
             stable_sort(vec.begin(), vec.end());
+
     }
 
     ivec_t colums;
@@ -544,9 +545,7 @@ void getBytesString(string&        dest,
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
 {
     size_t s = vec.size(), i, j;
-    size_t nrCol = opts.winRight / (maxWidth + 5 ) + 1;
-    if (nrCol > 10)
-        nrCol = 10;
+    size_t nrCol = opts.winWidth / (maxWidth + 1);
 
     iv = ivec_t(nrCol, 0);
     for (i = 0; i < s; ++i)
