@@ -289,7 +289,7 @@ int main(int argc, char** argv)
 
     if (result)
         writeReport(result);
-
+    cout << endl;
     return 0;
 }
 
@@ -483,6 +483,7 @@ void listAll(const string&   callDir,
 
 void help()
 {
+    cout << "\nA simple list directory utility for the Windows command line.\n\n";
     cout << "ls <options> wild-card\n\n";
     cout << "options:\n";
     cout << "    -x  list directory entries line by line.\n";
@@ -497,6 +498,7 @@ void help()
     cout << "    -l  list the file size, last write time and the file name.\n";
     cout << "    -S  build a short path name. used with the -x and the -l options.\n";
     cout << "    -h  show this help message.\n";
+    cout << "\n";
     exit(0);
 }
 
@@ -544,8 +546,12 @@ void getBytesString(string&        dest,
 
 void calculateColumns(pathvec_t& vec, ivec_t& iv, const size_t maxWidth, const Options& opts)
 {
-    size_t s = vec.size(), i, j;
-    size_t nrCol = opts.winWidth / (maxWidth + 1);
+    size_t s = vec.size(), i, j, nrCol;
+
+    if (maxWidth < opts.winWidth && maxWidth > 0)
+        nrCol = opts.winWidth / maxWidth;
+    else
+        nrCol = 1;
 
     iv = ivec_t(nrCol, 0);
     for (i = 0; i < s; ++i)
